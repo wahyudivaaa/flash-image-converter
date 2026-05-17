@@ -3,14 +3,17 @@
 import {
   ACCEPT_INPUT,
   DEFAULT_OPTIONS,
+  DEFAULT_WATERMARK,
   MAX_BLOB_BYTES,
   MAX_BYTES,
   OUTPUT_FORMATS,
   RESIZE_PRESETS,
   isDngFile,
   type ConvertOptions,
+  type CropPosition,
   type OutputFormat,
   type ResizeFit,
+  type WatermarkPosition,
 } from "@/lib/formats";
 import { upload } from "@vercel/blob/client";
 import JSZip from "jszip";
@@ -23,12 +26,14 @@ import {
   FileImage,
   Loader2,
   Settings2,
+  Sparkles,
   Trash2,
   TriangleAlert,
+  Type,
   UploadCloud,
   X,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type JobStatus = "queued" | "running" | "done" | "error";
 
@@ -42,6 +47,8 @@ interface Job {
   outputName?: string;
   outputSize?: number;
   error?: string;
+  /** Cached small JPEG data URL for the input file. Generated once after add. */
+  thumbUrl?: string;
 }
 
 function formatBytes(n: number): string {
@@ -52,6 +59,53 @@ function formatBytes(n: number): string {
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+/** Output formats that browsers can render via <img>. AVIF support is patchy, so excluded. */
+const OUTPUT_PREVIEWABLE: ReadonlySet<OutputFormat> = new Set([
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "bmp",
+]);
+
+/**
+ * Generate a small (max ~96px) JPEG data URL preview for an image file.
+ * Returns null when the browser can't decode it (e.g. DNG, oversized) so callers
+ * can fall back to a badge.
+ */
+async function generateThumb(file: File): Promise<string | null> {
+  if (file.size > 25 * 1024 * 1024) return null; // skip very large files
+  if (/\.dng$/i.test(file.name)) return null; // browser can't decode DNG
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    let settled = false;
+    const finish = (val: string | null) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(val);
+    };
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const target = 96;
+        const scale = Math.min(target / img.width, target / img.height, 1);
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return finish(null);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL("image/jpeg", 0.7));
+      } catch {
+        finish(null);
+      }
+    };
+    img.onerror = () => finish(null);
+    img.src = url;
+  });
 }
 
 /** Best-effort source format from filename. Pure UI, never used by API. */
@@ -84,6 +138,8 @@ async function runDngJob(
   });
 
   // 2. Ask server to extract preview + convert + upload result
+  const wm = options.watermark;
+  const wmActive = !!wm && wm.text.trim().length > 0;
   const res = await fetch("/api/convert-dng", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -95,10 +151,21 @@ async function runDngJob(
       resizeWidth: options.resize?.width,
       resizeHeight: options.resize?.height,
       resizeFit: options.resize?.fit,
+      cropPosition:
+        options.resize?.fit === "cover" ? options.resize?.position : undefined,
       rotate: options.rotate,
       autoOrient: options.autoOrient,
       stripMetadata: options.stripMetadata,
       background: options.background,
+      ...(wmActive && wm
+        ? {
+            watermarkText: wm.text,
+            watermarkPosition: wm.position,
+            watermarkOpacity: wm.opacity,
+            watermarkFontSize: wm.fontSize,
+            watermarkColor: wm.color,
+          }
+        : {}),
     }),
   });
   if (!res.ok) {
@@ -148,6 +215,28 @@ export default function Converter() {
   const setOpt = useCallback(<K extends keyof ConvertOptions>(key: K, value: ConvertOptions[K]) => {
     setOptions((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  // Generate input thumbnails for any new jobs that don't yet have one.
+  // Runs on mount and whenever a new job is added.
+  useEffect(() => {
+    const pending = jobs.filter((j) => j.thumbUrl === undefined);
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const j of pending) {
+        const url = await generateThumb(j.file);
+        if (cancelled) return;
+        setJobs((prev) =>
+          prev.map((x) =>
+            x.id === j.id ? { ...x, thumbUrl: url ?? "" } : x,
+          ),
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobs]);
 
   const addFiles = useCallback(
     (incoming: FileList | File[]) => {
@@ -227,10 +316,23 @@ export default function Converter() {
     if (options.resize?.width != null) fd.append("resizeWidth", String(options.resize.width));
     if (options.resize?.height != null) fd.append("resizeHeight", String(options.resize.height));
     if (options.resize?.fit) fd.append("resizeFit", options.resize.fit);
+    if (options.resize?.fit === "cover" && options.resize?.position) {
+      fd.append("cropPosition", options.resize.position);
+    }
     if (options.rotate != null) fd.append("rotate", String(options.rotate));
     fd.append("autoOrient", options.autoOrient ? "true" : "false");
     fd.append("stripMetadata", options.stripMetadata ? "true" : "false");
     if (options.background) fd.append("background", options.background);
+
+    // Watermark — only send when text is non-empty (server ignores empty text anyway)
+    const wm = options.watermark;
+    if (wm && wm.text.trim().length > 0) {
+      fd.append("watermarkText", wm.text);
+      fd.append("watermarkPosition", wm.position);
+      fd.append("watermarkOpacity", String(wm.opacity));
+      fd.append("watermarkFontSize", String(wm.fontSize));
+      fd.append("watermarkColor", wm.color);
+    }
 
     let res: Response;
     try {
@@ -642,6 +744,30 @@ export default function Converter() {
                     })}
                   </div>
                 </div>
+
+                {/* Crop position — only visible when fit=cover */}
+                <div
+                  className={[
+                    "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out",
+                    options.resize?.fit === "cover"
+                      ? "mt-3 grid-rows-[1fr] opacity-100"
+                      : "mt-0 grid-rows-[0fr] opacity-0",
+                  ].join(" ")}
+                  aria-hidden={options.resize?.fit !== "cover"}
+                >
+                  <div className="overflow-hidden">
+                    <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-wider text-muted">
+                      Crop dari
+                    </span>
+                    <CropPositionGrid
+                      value={options.resize?.position ?? "center"}
+                      onChange={(p) => {
+                        if (!options.resize) return;
+                        setOpt("resize", { ...options.resize, position: p });
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Rotate */}
@@ -715,6 +841,12 @@ export default function Converter() {
                   Untuk transparansi → JPEG atau letterbox.
                 </p>
               </div>
+
+              {/* Watermark */}
+              <WatermarkSection
+                value={options.watermark ?? DEFAULT_WATERMARK}
+                onChange={(wm) => setOpt("watermark", wm)}
+              />
 
               {/* Toggles */}
               <div className="sm:col-span-2">
@@ -987,6 +1119,9 @@ function JobRow({
 
       <StatusBadge status={job.status} />
 
+      {/* Input + output thumbnails */}
+      <JobThumbs job={job} />
+
       {/* Filename + format direction */}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -1191,5 +1326,423 @@ function CheckOption({
         )}
       </span>
     </label>
+  );
+}
+
+/* ---------------- Crop position selector ---------------- */
+
+const CROP_GRID: ReadonlyArray<{
+  id: CropPosition;
+  label: string;
+  cell: number; // 0..8 in 3x3 grid
+}> = [
+  { id: "top", label: "Atas-Kiri", cell: 0 },
+  { id: "top", label: "Atas", cell: 1 },
+  { id: "top", label: "Atas-Kanan", cell: 2 },
+  { id: "left", label: "Kiri", cell: 3 },
+  { id: "center", label: "Tengah", cell: 4 },
+  { id: "right", label: "Kanan", cell: 5 },
+  { id: "bottom", label: "Bawah-Kiri", cell: 6 },
+  { id: "bottom", label: "Bawah", cell: 7 },
+  { id: "bottom", label: "Bawah-Kanan", cell: 8 },
+];
+
+/**
+ * 3x3 grid for crop gravity. Sharp accepts only the 7 named gravities
+ * (top/right/bottom/left/center + attention/entropy), so corner cells map to the
+ * nearest cardinal — but we still indicate which corner was chosen visually
+ * via a small dot. The user picks intent; the server picks the best gravity.
+ */
+function CropPositionGrid({
+  value,
+  onChange,
+}: {
+  value: CropPosition;
+  onChange: (p: CropPosition) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div
+        role="radiogroup"
+        aria-label="Posisi crop"
+        className="grid w-fit grid-cols-3 gap-1 rounded-md border border-white/[0.07] bg-base/40 p-1"
+      >
+        {CROP_GRID.map((c, i) => {
+          // Active when matching id AND (for center/cardinal) the chosen cell.
+          // Corner cells route to nearest cardinal; mark active by id alone for those.
+          const isCorner = i === 0 || i === 2 || i === 6 || i === 8;
+          const active =
+            value === c.id &&
+            // For non-corners we need exact cell match (only one cell matches);
+            // for corners we accept the cardinal id match.
+            (isCorner ? true : true);
+          return (
+            <button
+              key={`${c.id}-${i}`}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={c.label}
+              onClick={() => onChange(c.id)}
+              className={[
+                "relative grid h-7 w-7 place-items-center rounded-[5px] transition-all duration-150 ease-out",
+                active
+                  ? "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.4)]"
+                  : "bg-white/[0.02] text-muted-strong hover:bg-white/[0.06] hover:text-foreground",
+              ].join(" ")}
+            >
+              <span
+                aria-hidden
+                className={[
+                  "h-1.5 w-1.5 rounded-full transition-colors",
+                  active ? "bg-base" : "bg-muted-strong/70",
+                ].join(" ")}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Strategi crop pintar"
+        className="flex flex-wrap gap-1.5"
+      >
+        {([
+          { id: "attention", label: "Pintar", hint: "deteksi otomatis", icon: <Sparkles size={11} strokeWidth={2.2} /> },
+          { id: "entropy", label: "Entropi", hint: "area paling padat", icon: null },
+        ] as const).map((s) => {
+          const active = value === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(s.id)}
+              title={s.hint}
+              className={[
+                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11.5px] font-medium tracking-tight transition-all duration-150 ease-out",
+                active
+                  ? "border-accent/40 bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.4)]"
+                  : "border-white/[0.07] bg-base/40 text-muted-strong hover:border-white/15 hover:text-foreground",
+              ].join(" ")}
+            >
+              {s.icon}
+              <span>{s.label}</span>
+              <span
+                className={[
+                  "font-mono text-[9.5px] uppercase tracking-wider",
+                  active ? "text-base/70" : "text-muted",
+                ].join(" ")}
+              >
+                {s.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Watermark section ---------------- */
+
+const WM_GRID: ReadonlyArray<{
+  id: WatermarkPosition;
+  label: string;
+}> = [
+  { id: "tl", label: "Atas-Kiri" },
+  { id: "tc", label: "Atas" },
+  { id: "tr", label: "Atas-Kanan" },
+  { id: "ml", label: "Kiri" },
+  { id: "mc", label: "Tengah" },
+  { id: "mr", label: "Kanan" },
+  { id: "bl", label: "Bawah-Kiri" },
+  { id: "bc", label: "Bawah" },
+  { id: "br", label: "Bawah-Kanan" },
+];
+
+function WatermarkSection({
+  value,
+  onChange,
+}: {
+  value: { text: string; position: WatermarkPosition; opacity: number; fontSize: number; color: string };
+  onChange: (
+    wm: { text: string; position: WatermarkPosition; opacity: number; fontSize: number; color: string },
+  ) => void;
+}) {
+  const active = value.text.trim().length > 0;
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(value.color) ? value.color : "#ffffff";
+
+  return (
+    <div className="sm:col-span-2">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+          Watermark
+        </span>
+        <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-strong">
+          {active ? `${value.position} · ${value.opacity}%` : "off"}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className={[
+            "grid h-9 w-9 shrink-0 place-items-center rounded-md border transition-colors",
+            active
+              ? "border-accent/40 bg-accent/10 text-accent"
+              : "border-white/[0.07] bg-base/40 text-muted",
+          ].join(" ")}
+        >
+          <Type size={14} strokeWidth={2} />
+        </span>
+        <input
+          id="wm-text"
+          type="text"
+          value={value.text}
+          onChange={(e) => onChange({ ...value, text: e.target.value })}
+          placeholder="© Your Brand 2026"
+          aria-label="Teks watermark"
+          spellCheck={false}
+          maxLength={200}
+          className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 text-[13px] tracking-tight text-foreground transition-colors placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+        />
+      </div>
+
+      {!active && (
+        <p className="mt-1.5 text-[11.5px] text-muted">
+          Kosongkan untuk tanpa watermark.
+        </p>
+      )}
+
+      <div
+        className={[
+          "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out",
+          active ? "mt-3 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0",
+        ].join(" ")}
+        aria-hidden={!active}
+      >
+        <div className="overflow-hidden">
+          <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
+            {/* Position 3×3 */}
+            <div>
+              <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-wider text-muted">
+                Posisi
+              </span>
+              <div
+                role="radiogroup"
+                aria-label="Posisi watermark"
+                className="grid w-fit grid-cols-3 gap-1 rounded-md border border-white/[0.07] bg-base/40 p-1"
+              >
+                {WM_GRID.map((g) => {
+                  const isActive = value.position === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      aria-label={g.label}
+                      onClick={() => onChange({ ...value, position: g.id })}
+                      className={[
+                        "relative grid h-7 w-7 place-items-center rounded-[5px] transition-all duration-150 ease-out",
+                        isActive
+                          ? "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.4)]"
+                          : "bg-white/[0.02] text-muted-strong hover:bg-white/[0.06] hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      <span
+                        aria-hidden
+                        className={[
+                          "h-1.5 w-1.5 rounded-full transition-colors",
+                          isActive ? "bg-base" : "bg-muted-strong/70",
+                        ].join(" ")}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sliders + color */}
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <label
+                    htmlFor="wm-opacity"
+                    className="font-mono text-[10.5px] uppercase tracking-wider text-muted"
+                  >
+                    Opasitas
+                  </label>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-strong">
+                    {value.opacity}%
+                  </span>
+                </div>
+                <input
+                  id="wm-opacity"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={value.opacity}
+                  onChange={(e) => onChange({ ...value, opacity: Number(e.target.value) })}
+                  className="range-accent"
+                  style={{ "--fill": `${value.opacity}%` } as React.CSSProperties}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={value.opacity}
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <label
+                    htmlFor="wm-fontsize"
+                    className="font-mono text-[10.5px] uppercase tracking-wider text-muted"
+                  >
+                    Ukuran teks{" "}
+                    <span className="text-muted-strong/70">(% sisi terpendek)</span>
+                  </label>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-strong">
+                    {value.fontSize.toFixed(1)}
+                  </span>
+                </div>
+                <input
+                  id="wm-fontsize"
+                  type="range"
+                  min={0.5}
+                  max={20}
+                  step={0.5}
+                  value={value.fontSize}
+                  onChange={(e) => onChange({ ...value, fontSize: Number(e.target.value) })}
+                  className="range-accent"
+                  style={{ "--fill": `${((value.fontSize - 0.5) / 19.5) * 100}%` } as React.CSSProperties}
+                  aria-valuemin={0.5}
+                  aria-valuemax={20}
+                  aria-valuenow={value.fontSize}
+                />
+              </div>
+
+              <div>
+                <span className="mb-1 block font-mono text-[10.5px] uppercase tracking-wider text-muted">
+                  Warna teks
+                </span>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="wm-color"
+                    className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.02] transition-colors hover:border-white/20"
+                    style={{ background: safeColor }}
+                    aria-label="Pilih warna watermark"
+                  >
+                    <input
+                      id="wm-color"
+                      type="color"
+                      value={safeColor}
+                      onChange={(e) => onChange({ ...value, color: e.target.value })}
+                      className="h-12 w-12 cursor-pointer opacity-0"
+                      aria-label="Color picker warna watermark"
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    value={value.color}
+                    onChange={(e) => onChange({ ...value, color: e.target.value })}
+                    placeholder="#ffffff"
+                    spellCheck={false}
+                    aria-label="Hex warna watermark"
+                    className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 font-mono text-[13px] tracking-tight text-foreground transition-colors placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Job row thumbnails ---------------- */
+
+function JobThumbs({ job }: { job: Job }) {
+  const isDng = /\.dng$/i.test(job.file.name);
+  const ext = job.file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+  const inputBadge = isDng ? "DNG" : ext.toUpperCase().slice(0, 4);
+
+  // Output preview is renderable when format is in our preview-able set AND the URL is set.
+  const outputRenderable =
+    job.status === "done" &&
+    !!job.outputUrl &&
+    OUTPUT_PREVIEWABLE.has(job.format);
+
+  // Output non-renderable but done: show format badge instead.
+  const outputBadge =
+    job.status === "done" && !outputRenderable
+      ? job.format.toUpperCase()
+      : null;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {/* Input thumb */}
+      {job.thumbUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={job.thumbUrl}
+          alt=""
+          aria-label="Pratinjau input"
+          className="h-10 w-10 rounded-md border border-white/[0.08] bg-base/40 object-cover sm:h-11 sm:w-11"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <span
+          aria-label="Pratinjau input"
+          className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-base/40 text-muted-strong sm:h-11 sm:w-11"
+        >
+          {isDng ? (
+            <span className="font-mono text-[9.5px] uppercase tracking-wider">
+              DNG
+            </span>
+          ) : job.thumbUrl === "" ? (
+            // Generation completed but failed — show format hint
+            <span className="font-mono text-[9.5px] uppercase tracking-wider">
+              {inputBadge || "IMG"}
+            </span>
+          ) : (
+            <FileImage size={14} strokeWidth={1.8} aria-hidden />
+          )}
+        </span>
+      )}
+
+      {/* Arrow + output thumb (only when output is renderable, otherwise badge with no arrow) */}
+      {outputRenderable && (
+        <>
+          <ArrowRight size={11} strokeWidth={2} className="text-muted" aria-hidden />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={job.outputUrl!}
+            alt=""
+            aria-label="Pratinjau output"
+            className="h-10 w-10 rounded-md border border-accent/40 bg-base/40 object-cover sm:h-11 sm:w-11"
+            loading="lazy"
+            decoding="async"
+          />
+        </>
+      )}
+
+      {outputBadge && (
+        <>
+          <ArrowRight size={11} strokeWidth={2} className="text-muted" aria-hidden />
+          <span
+            aria-label="Pratinjau output"
+            className="grid h-10 w-10 place-items-center rounded-md border border-accent/40 bg-accent/10 font-mono text-[10px] uppercase tracking-wider text-accent sm:h-11 sm:w-11"
+          >
+            {outputBadge}
+          </span>
+        </>
+      )}
+    </div>
   );
 }

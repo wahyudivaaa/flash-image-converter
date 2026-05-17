@@ -12,12 +12,15 @@
 import sharp from "sharp";
 import {
   type ConvertOptions,
+  type CropPosition,
   type OutputFormat,
   type ResizeFit,
+  type WatermarkPosition,
 } from "@/lib/formats";
 import { encodeBmp } from "@/lib/encoders/bmp";
 import { encodeIco } from "@/lib/encoders/ico";
 import { encodePdf } from "@/lib/encoders/pdf";
+import { applyWatermark } from "@/lib/encoders/watermark";
 
 interface BuildPipelineArgs {
   input: Buffer | Uint8Array;
@@ -28,6 +31,26 @@ interface BuildPipelineArgs {
 }
 
 const ROTATABLE = new Set([0, 90, 180, 270]);
+const VALID_CROP_POSITIONS = new Set<CropPosition>([
+  "center", "attention", "entropy", "top", "right", "bottom", "left",
+]);
+const VALID_WATERMARK_POSITIONS = new Set<WatermarkPosition>([
+  "tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br",
+]);
+
+/** Map our crop position -> sharp position string/strategy. */
+function sharpPositionFor(cp: CropPosition | undefined): string | number {
+  switch (cp) {
+    case "attention": return sharp.strategy.attention;
+    case "entropy":   return sharp.strategy.entropy;
+    case "top":       return "top";
+    case "right":     return "right";
+    case "bottom":    return "bottom";
+    case "left":      return "left";
+    case "center":
+    default:          return "center";
+  }
+}
 
 /** Formats that sharp encodes natively. The others go through custom encoders. */
 const SHARP_NATIVE: ReadonlySet<OutputFormat> = new Set([
@@ -89,6 +112,7 @@ export async function convertWithPipeline(args: BuildPipelineArgs): Promise<Buff
       width: r.width || undefined,
       height: r.height || undefined,
       fit,
+      position: fit === "cover" ? sharpPositionFor(r.position) : undefined,
       withoutEnlargement: true,
       background: bg,
     });
@@ -97,6 +121,14 @@ export async function convertWithPipeline(args: BuildPipelineArgs): Promise<Buff
   // 4. Flatten transparency for opaque targets (JPEG, BMP, PDF — all opaque)
   if (format === "jpeg" || format === "bmp" || format === "pdf") {
     pipeline = pipeline.flatten({ background: bg });
+  }
+
+  // 4b. Watermark (after rotate/resize/flatten so it sits on the final pixels).
+  // We must materialize to a buffer because composite needs a concrete image.
+  if (options.watermark && options.watermark.text.trim() !== "") {
+    const intermediate = await pipeline.png().toBuffer();
+    const watermarked = await applyWatermark(intermediate, options.watermark);
+    pipeline = sharp(watermarked, { failOn: "none" });
   }
 
   // 5. Encode
@@ -157,10 +189,32 @@ export function parseOptions(raw: Record<string, unknown>): ConvertOptions {
 
   const w = Math.max(0, Math.round(num(raw.resizeWidth, 0)));
   const h = Math.max(0, Math.round(num(raw.resizeHeight, 0)));
-  const resize = w || h ? { width: w || undefined, height: h || undefined, fit } : undefined;
+
+  const posVal = String(raw.cropPosition ?? "center");
+  const position: CropPosition = VALID_CROP_POSITIONS.has(posVal as CropPosition)
+    ? (posVal as CropPosition)
+    : "center";
+
+  const resize = w || h
+    ? { width: w || undefined, height: h || undefined, fit, position }
+    : undefined;
 
   const rotateVal = Math.round(num(raw.rotate, 0));
   const rotate = ROTATABLE.has(rotateVal) ? rotateVal : 0;
+
+  // Watermark — only build the object if text is non-empty
+  const wmText = String(raw.watermarkText ?? "").trim();
+  const watermark = wmText
+    ? {
+        text: wmText.slice(0, 200),
+        position: VALID_WATERMARK_POSITIONS.has(String(raw.watermarkPosition ?? "br") as WatermarkPosition)
+          ? (String(raw.watermarkPosition ?? "br") as WatermarkPosition)
+          : "br",
+        opacity: Math.min(100, Math.max(0, Math.round(num(raw.watermarkOpacity, 60)))),
+        fontSize: Math.min(20, Math.max(0.5, num(raw.watermarkFontSize, 4))),
+        color: safeBackground(String(raw.watermarkColor ?? "#ffffff")),
+      }
+    : undefined;
 
   return {
     quality: Math.min(100, Math.max(1, Math.round(num(raw.quality, 85)))),
@@ -169,5 +223,6 @@ export function parseOptions(raw: Record<string, unknown>): ConvertOptions {
     autoOrient: bool(raw.autoOrient, true),
     stripMetadata: bool(raw.stripMetadata, true),
     background: safeBackground(String(raw.background ?? "#ffffff")),
+    watermark,
   };
 }

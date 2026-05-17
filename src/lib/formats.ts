@@ -128,13 +128,46 @@ export function isDngFile(file: File): boolean {
  *  - inside  : preserve aspect, image fits within bounds (the safe default)
  *  - cover   : crop to fill bounds exactly
  *  - contain : letterbox to fit bounds (requires bg)
+ *
+ * "position" is only meaningful for fit=cover and decides where to crop FROM.
+ *  - center    : crop from the center (default)
+ *  - attention : sharp's smart strategy — preserves the highest-attention region
+ *  - entropy   : sharp's strategy — preserves the highest-entropy region
+ *  - top, right, left, bottom — gravity-based crops
  */
 export type ResizeFit = "inside" | "cover" | "contain";
+export type CropPosition =
+  | "center"
+  | "attention"
+  | "entropy"
+  | "top"
+  | "right"
+  | "bottom"
+  | "left";
 
 export interface ResizeOptions {
   width?: number;
   height?: number;
   fit: ResizeFit;
+  position?: CropPosition;
+}
+
+/**
+ * Watermark text overlay. Position is a 9-grid (top-left .. bottom-right).
+ * fontSize is relative — it's a percentage of the SHORTER side of the image,
+ * so the watermark scales sensibly across resolutions.
+ */
+export type WatermarkPosition =
+  | "tl" | "tc" | "tr"
+  | "ml" | "mc" | "mr"
+  | "bl" | "bc" | "br";
+
+export interface WatermarkOptions {
+  text: string;             // empty = disabled
+  position: WatermarkPosition;
+  opacity: number;          // 0..100
+  fontSize: number;         // % of shorter side (1..20 sensible)
+  color: string;            // hex
 }
 
 /**
@@ -147,6 +180,7 @@ export interface ConvertOptions {
   autoOrient: boolean;        // honor EXIF Orientation tag
   stripMetadata: boolean;     // strip EXIF/IPTC/XMP from output
   background: string;         // CSS color used when flattening transparency to opaque
+  watermark?: WatermarkOptions;
 }
 
 export const DEFAULT_OPTIONS: ConvertOptions = {
@@ -156,6 +190,15 @@ export const DEFAULT_OPTIONS: ConvertOptions = {
   autoOrient: true,
   stripMetadata: true,
   background: "#ffffff",
+  watermark: undefined,
+};
+
+export const DEFAULT_WATERMARK: WatermarkOptions = {
+  text: "",
+  position: "br",
+  opacity: 60,
+  fontSize: 4,
+  color: "#ffffff",
 };
 
 /** Predefined size presets for the UI. */
