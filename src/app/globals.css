@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0a0a0b;
+  color: #f4f4f5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle grain on the hero — adds depth without noise */
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.04) 1px,
+    transparent 0
+  );
+  background-size: 4px 4px;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+}
