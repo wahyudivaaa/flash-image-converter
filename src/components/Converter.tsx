@@ -6,6 +6,17 @@ import {
   OUTPUT_FORMATS,
   type OutputFormat,
 } from "@/lib/formats";
+import {
+  ArrowRight,
+  Check,
+  Download,
+  FileImage,
+  Loader2,
+  Trash2,
+  TriangleAlert,
+  UploadCloud,
+  X,
+} from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 type JobStatus = "queued" | "running" | "done" | "error";
@@ -30,6 +41,16 @@ function formatBytes(n: number): string {
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+/** Best-effort source format from filename. Pure UI, never used by API. */
+function sourceLabel(name: string): string {
+  const ext = name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+  if (ext === "jpg" || ext === "jpeg") return "JPEG";
+  if (ext === "tif" || ext === "tiff") return "TIFF";
+  if (ext === "svg") return "SVG";
+  if (ext) return ext.toUpperCase();
+  return "IMG";
 }
 
 export default function Converter() {
@@ -179,42 +200,108 @@ export default function Converter() {
 
   return (
     <div className="space-y-6">
-      {/* Controls */}
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-          <label className="mb-2 block text-xs font-mono uppercase tracking-widest text-zinc-400">
-            Format tujuan
-          </label>
-          <div className="flex flex-wrap gap-2">
+      {/* Controls grid */}
+      <div className="grid gap-4 sm:grid-cols-[1.4fr_1fr]">
+        {/* Format picker */}
+        <div className="rounded-lg border border-white/[0.07] bg-surface/60 p-5 shadow-inset-hi">
+          <div className="mb-4 flex items-baseline justify-between">
+            <label className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+              Format tujuan
+            </label>
+            <span className="font-mono text-[11px] text-muted-strong">
+              {currentMeta.lossy ? "lossy" : "lossless"}
+            </span>
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label="Format keluaran"
+            className="grid grid-cols-3 gap-2 sm:grid-cols-6"
+          >
             {OUTPUT_FORMATS.map((f) => {
               const active = format === f.id;
               return (
                 <button
                   key={f.id}
                   type="button"
+                  role="radio"
+                  aria-checked={active}
                   onClick={() => setFormat(f.id)}
                   className={[
-                    "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "group relative flex flex-col items-start gap-1 rounded-md px-2.5 py-2 text-left transition-all duration-150 ease-out",
                     active
-                      ? "bg-zinc-100 text-zinc-900"
-                      : "border border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.06]",
+                      ? "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.5),0_0_0_1px_rgb(196_240_66_/_0.4),0_0_24px_-8px_rgb(196_240_66_/_0.6)]"
+                      : "border border-white/[0.07] bg-white/[0.015] text-muted-strong hover:border-white/15 hover:bg-white/[0.04] hover:text-foreground",
                   ].join(" ")}
-                  aria-pressed={active}
                 >
-                  {f.label}
+                  <span className="flex w-full items-center justify-between">
+                    <span
+                      className={[
+                        "text-[13px] font-semibold tracking-tight",
+                        active ? "text-base" : "",
+                      ].join(" ")}
+                    >
+                      {f.label}
+                    </span>
+                    <Check
+                      size={12}
+                      strokeWidth={3}
+                      className={[
+                        "transition-all duration-150",
+                        active
+                          ? "scale-100 opacity-100"
+                          : "scale-75 opacity-0",
+                      ].join(" ")}
+                    />
+                  </span>
+                  <span
+                    className={[
+                      "font-mono text-[10px] uppercase tracking-wider",
+                      active ? "text-base/70" : "text-muted",
+                    ].join(" ")}
+                  >
+                    .{f.ext}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <p className="mt-3 text-xs text-zinc-500">{currentMeta.hint}</p>
+
+          <p className="mt-4 flex items-start gap-2 text-[12.5px] text-muted">
+            <span
+              aria-hidden
+              className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent"
+            />
+            <span>{currentMeta.hint}</span>
+          </p>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 sm:min-w-[260px]">
-          <label className="mb-2 flex items-center justify-between text-xs font-mono uppercase tracking-widest text-zinc-400">
-            <span>Kualitas</span>
-            <span className="text-zinc-300">{quality}</span>
-          </label>
+        {/* Quality slider */}
+        <div className="rounded-lg border border-white/[0.07] bg-surface/60 p-5 shadow-inset-hi">
+          <div className="mb-4 flex items-baseline justify-between">
+            <label
+              htmlFor="quality"
+              className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted"
+            >
+              Kualitas
+            </label>
+            <span className="flex items-baseline gap-1">
+              <span
+                className={[
+                  "font-mono text-2xl font-medium tabular-nums tracking-tight",
+                  currentMeta.lossy ? "text-foreground" : "text-muted/40",
+                ].join(" ")}
+              >
+                {currentMeta.lossy ? quality : "—"}
+              </span>
+              {currentMeta.lossy && (
+                <span className="font-mono text-[11px] text-muted">/100</span>
+              )}
+            </span>
+          </div>
+
           <input
+            id="quality"
             type="range"
             min={1}
             max={100}
@@ -222,12 +309,17 @@ export default function Converter() {
             value={quality}
             disabled={!currentMeta.lossy}
             onChange={(e) => setQuality(Number(e.target.value))}
-            className="w-full accent-zinc-100 disabled:opacity-30"
+            className="range-accent"
+            style={{ "--fill": `${quality}%` } as React.CSSProperties}
+            aria-valuemin={1}
+            aria-valuemax={100}
+            aria-valuenow={quality}
           />
-          <p className="mt-3 text-xs text-zinc-500">
+
+          <p className="mt-3 text-[12.5px] text-muted">
             {currentMeta.lossy
               ? "Lebih rendah = ukuran lebih kecil."
-              : "Format lossless — slider tidak berlaku."}
+              : `${currentMeta.label} lossless — slider tidak berlaku.`}
           </p>
         </div>
       </div>
@@ -243,6 +335,7 @@ export default function Converter() {
         onClick={() => inputRef.current?.click()}
         role="button"
         tabIndex={0}
+        aria-label="Unggah gambar untuk dikonversi"
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -250,167 +343,354 @@ export default function Converter() {
           }
         }}
         className={[
-          "group relative grid cursor-pointer place-items-center rounded-xl border-2 border-dashed px-6 py-12 transition-colors",
+          "group relative grid cursor-pointer place-items-center overflow-hidden rounded-lg px-6 py-14 transition-all duration-200 ease-out sm:py-20",
           dragActive
-            ? "border-zinc-100 bg-white/[0.04]"
-            : "border-white/10 bg-white/[0.02] hover:border-white/20",
+            ? "bg-accent/[0.06] drop-active"
+            : "border border-white/[0.08] bg-surface/40 hover:border-white/15 hover:bg-surface/60",
         ].join(" ")}
       >
+        {/* Halo on drag */}
+        <div
+          aria-hidden
+          className={[
+            "pointer-events-none absolute inset-0 transition-opacity duration-200",
+            dragActive ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgb(196_240_66_/_0.12),transparent_60%)]" />
+        </div>
+
         <input
           ref={inputRef}
           type="file"
           multiple
           accept={ACCEPT_INPUT}
-          className="hidden"
+          className="sr-only"
           onChange={onPick}
         />
-        <div className="text-center">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-white/5 text-zinc-300">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M12 16V4" />
-              <path d="m6 10 6-6 6 6" />
-              <path d="M4 20h16" />
-            </svg>
+
+        <div className="relative text-center">
+          <div
+            className={[
+              "mx-auto mb-5 grid h-14 w-14 place-items-center rounded-xl border transition-all duration-200 ease-out",
+              dragActive
+                ? "scale-110 border-accent/50 bg-accent/15 text-accent"
+                : "border-white/10 bg-white/[0.03] text-muted-strong group-hover:border-white/20 group-hover:bg-white/[0.05] group-hover:text-foreground",
+            ].join(" ")}
+          >
+            <UploadCloud size={26} strokeWidth={1.6} />
           </div>
-          <p className="text-base font-medium">
-            Drag & drop file di sini, atau klik untuk pilih
+
+          <p className="text-[15.5px] font-medium tracking-tight text-foreground sm:text-base">
+            {dragActive
+              ? "Lepaskan untuk menambahkan ke antrian"
+              : "Drag & drop, atau klik untuk pilih file"}
           </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            JPG, PNG, WebP, AVIF, TIFF, GIF, SVG · max{" "}
-            {(MAX_BYTES / 1024 / 1024).toFixed(1)} MB per file
-          </p>
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-muted">
+            <span>JPG · PNG · WebP · AVIF · TIFF · GIF · SVG</span>
+            <span className="text-white/15">·</span>
+            <span>
+              max{" "}
+              <span className="text-muted-strong">
+                {(MAX_BYTES / 1024 / 1024).toFixed(1)} MB
+              </span>{" "}
+              / file
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Action bar */}
       {jobs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.07] bg-surface/60 p-3 shadow-inset-hi sm:p-4">
           <button
             type="button"
             onClick={convertAll}
             disabled={busy || queuedCount === 0}
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            className={[
+              "group inline-flex items-center gap-2 rounded-md px-4 py-2 text-[13.5px] font-semibold tracking-tight transition-all duration-150 ease-out",
+              busy || queuedCount === 0
+                ? "cursor-not-allowed border border-white/[0.06] bg-white/[0.02] text-muted/60"
+                : "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.5)] hover:-translate-y-px hover:shadow-accent-glow active:translate-y-0",
+            ].join(" ")}
           >
-            {busy
-              ? "Mengonversi..."
-              : queuedCount > 0
-                ? `Konversi ${queuedCount} file → ${currentMeta.label}`
-                : "Semua selesai"}
+            {busy ? (
+              <>
+                <Loader2 size={14} strokeWidth={2.4} className="animate-spin" />
+                <span>Mengonversi…</span>
+              </>
+            ) : queuedCount > 0 ? (
+              <>
+                <span>
+                  Konversi {queuedCount} file
+                </span>
+                <ArrowRight
+                  size={14}
+                  strokeWidth={2.4}
+                  className="transition-transform duration-150 group-hover:translate-x-0.5"
+                />
+                <span className="font-mono text-[12px] tracking-wider">
+                  {currentMeta.label}
+                </span>
+              </>
+            ) : (
+              <>
+                <Check size={14} strokeWidth={2.4} />
+                <span>Semua selesai</span>
+              </>
+            )}
           </button>
+
           <button
             type="button"
             onClick={downloadAll}
             disabled={doneCount === 0}
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+            className={[
+              "inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-[13px] font-medium transition-all duration-150 ease-out",
+              doneCount === 0
+                ? "cursor-not-allowed border-white/[0.05] bg-white/[0.01] text-muted/40"
+                : "border-white/10 bg-white/[0.03] text-muted-strong hover:border-white/20 hover:bg-white/[0.07] hover:text-foreground",
+            ].join(" ")}
           >
-            Download semua ({doneCount})
+            <Download size={13} strokeWidth={2.2} />
+            <span>
+              Download semua{" "}
+              <span className="font-mono text-[11.5px] text-muted">
+                ({doneCount})
+              </span>
+            </span>
           </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            disabled={busy}
-            className="ml-auto rounded-lg border border-transparent px-3 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200 disabled:opacity-40"
-          >
-            Bersihkan
-          </button>
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className="hidden items-center gap-3 font-mono text-[11px] uppercase tracking-wider text-muted sm:flex">
+              <span>
+                <span className="text-muted-strong">{queuedCount}</span> antri
+              </span>
+              <span className="text-white/15">·</span>
+              <span>
+                <span className="text-muted-strong">{doneCount}</span> selesai
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={clearAll}
+              disabled={busy}
+              aria-label="Bersihkan semua"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-[12.5px] text-muted transition-colors hover:bg-white/[0.04] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <Trash2 size={12} strokeWidth={2.2} />
+              <span className="hidden sm:inline">Bersihkan</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Job list */}
-      {jobs.length > 0 && (
-        <ul className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
-          {jobs.map((job) => (
-            <li
+      {jobs.length > 0 ? (
+        <ul className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface/40 shadow-inset-hi">
+          {jobs.map((job, idx) => (
+            <JobRow
               key={job.id}
-              className="flex flex-wrap items-center gap-4 px-4 py-3 sm:flex-nowrap"
-            >
-              <StatusDot status={job.status} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-zinc-100">
-                  {job.file.name}
-                </p>
-                <p className="truncate text-xs text-zinc-500">
-                  {formatBytes(job.file.size)}
-                  {job.status === "done" && job.outputSize !== undefined && (
-                    <>
-                      {" "}
-                      → {formatBytes(job.outputSize)} ·{" "}
-                      <span
-                        className={
-                          job.outputSize <= job.file.size
-                            ? "text-emerald-400"
-                            : "text-amber-400"
-                        }
-                      >
-                        {job.outputSize <= job.file.size ? "−" : "+"}
-                        {Math.abs(
-                          Math.round(
-                            ((job.outputSize - job.file.size) / job.file.size) *
-                              100,
-                          ),
-                        )}
-                        %
-                      </span>
-                    </>
-                  )}
-                  {job.status === "error" && job.error && (
-                    <> · <span className="text-rose-400">{job.error}</span></>
-                  )}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {job.status === "done" && job.outputUrl && (
-                  <a
-                    href={job.outputUrl}
-                    download={job.outputName}
-                    className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-white/[0.08]"
-                  >
-                    Download
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeJob(job.id)}
-                  disabled={busy && job.status === "running"}
-                  className="rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:text-zinc-200 disabled:opacity-30"
-                  aria-label={`Hapus ${job.file.name}`}
-                >
-                  &times;
-                </button>
-              </div>
-            </li>
+              job={job}
+              isFirst={idx === 0}
+              onRemove={() => removeJob(job.id)}
+              busy={busy}
+            />
           ))}
         </ul>
+      ) : (
+        <EmptyState />
       )}
     </div>
   );
 }
 
-function StatusDot({ status }: { status: JobStatus }) {
-  const map: Record<JobStatus, { color: string; label: string }> = {
-    queued: { color: "bg-zinc-500", label: "Antri" },
-    running: { color: "bg-amber-400 animate-pulse", label: "Memproses" },
-    done: { color: "bg-emerald-400", label: "Selesai" },
-    error: { color: "bg-rose-500", label: "Gagal" },
+function JobRow({
+  job,
+  isFirst,
+  onRemove,
+  busy,
+}: {
+  job: Job;
+  isFirst: boolean;
+  onRemove: () => void;
+  busy: boolean;
+}) {
+  const targetMeta = OUTPUT_FORMATS.find((f) => f.id === job.format)!;
+  const src = sourceLabel(job.file.name);
+
+  const delta =
+    job.status === "done" && job.outputSize !== undefined
+      ? Math.round(((job.outputSize - job.file.size) / job.file.size) * 100)
+      : null;
+
+  return (
+    <li
+      className={[
+        "relative flex flex-wrap items-center gap-3 px-4 py-3 transition-colors animate-slide-up sm:flex-nowrap sm:gap-4 sm:px-5 sm:py-3.5",
+        isFirst ? "" : "border-t border-white/[0.05]",
+        job.status === "running" ? "bg-accent/[0.025]" : "",
+      ].join(" ")}
+    >
+      {/* Shimmer overlay while running */}
+      {job.status === "running" && (
+        <span
+          aria-hidden
+          className="shimmer pointer-events-none absolute inset-x-0 top-0 h-px"
+        />
+      )}
+
+      <StatusBadge status={job.status} />
+
+      {/* Filename + format direction */}
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileImage
+            size={13}
+            strokeWidth={2}
+            className="shrink-0 text-muted"
+            aria-hidden
+          />
+          <p className="truncate text-[13.5px] font-medium text-foreground">
+            {job.file.name}
+          </p>
+        </div>
+
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider">
+            <span className="rounded border border-white/[0.08] bg-white/[0.02] px-1.5 py-[1px] text-muted-strong">
+              {src}
+            </span>
+            <ArrowRight size={10} strokeWidth={2} className="text-muted" />
+            <span
+              className={[
+                "rounded border px-1.5 py-[1px]",
+                job.status === "done"
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-white/[0.08] bg-white/[0.02] text-muted-strong",
+              ].join(" ")}
+            >
+              {targetMeta.label}
+            </span>
+          </span>
+
+          <span className="text-white/15">·</span>
+
+          <span className="font-mono tabular-nums text-[11.5px]">
+            {formatBytes(job.file.size)}
+            {job.status === "done" && job.outputSize !== undefined && (
+              <>
+                <span className="mx-1 text-white/20">→</span>
+                <span className="text-muted-strong">
+                  {formatBytes(job.outputSize)}
+                </span>
+                {delta !== null && (
+                  <span
+                    className={[
+                      "ml-1.5 inline-flex items-center rounded px-1 py-px font-mono text-[10.5px] tabular-nums",
+                      delta <= 0
+                        ? "bg-success/10 text-success"
+                        : "bg-warning/10 text-warning",
+                    ].join(" ")}
+                  >
+                    {delta <= 0 ? "−" : "+"}
+                    {Math.abs(delta)}%
+                  </span>
+                )}
+              </>
+            )}
+          </span>
+
+          {job.status === "error" && job.error && (
+            <>
+              <span className="text-white/15">·</span>
+              <span className="inline-flex items-center gap-1 text-danger">
+                <TriangleAlert size={11} strokeWidth={2.2} />
+                {job.error}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {job.status === "done" && job.outputUrl && (
+          <a
+            href={job.outputUrl}
+            download={job.outputName}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-[12px] font-semibold tracking-tight text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.45)] transition-all duration-150 hover:-translate-y-px hover:shadow-accent-glow"
+          >
+            <Download size={12} strokeWidth={2.4} />
+            <span>Download</span>
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy && job.status === "running"}
+          className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label={`Hapus ${job.file.name}`}
+        >
+          <X size={13} strokeWidth={2.2} />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function StatusBadge({ status }: { status: JobStatus }) {
+  const map: Record<
+    JobStatus,
+    { label: string; ring: string; dot: React.ReactNode }
+  > = {
+    queued: {
+      label: "Antri",
+      ring: "border-white/10 bg-white/[0.03] text-muted",
+      dot: <span className="h-1.5 w-1.5 rounded-full bg-muted/70" />,
+    },
+    running: {
+      label: "Memproses",
+      ring: "border-accent/40 bg-accent/10 text-accent",
+      dot: <Loader2 size={11} strokeWidth={2.4} className="animate-spin" />,
+    },
+    done: {
+      label: "Selesai",
+      ring: "border-success/30 bg-success/10 text-success",
+      dot: <Check size={11} strokeWidth={3} />,
+    },
+    error: {
+      label: "Gagal",
+      ring: "border-danger/30 bg-danger/10 text-danger",
+      dot: <TriangleAlert size={11} strokeWidth={2.4} />,
+    },
   };
   const cfg = map[status];
   return (
     <span
-      className="inline-flex items-center gap-2 text-xs text-zinc-400"
+      className={[
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10.5px] uppercase tracking-wider",
+        cfg.ring,
+      ].join(" ")}
+      aria-label={cfg.label}
       title={cfg.label}
     >
-      <span className={`h-2 w-2 rounded-full ${cfg.color}`} aria-hidden />
-      <span className="hidden sm:inline">{cfg.label}</span>
+      {cfg.dot}
+      <span>{cfg.label}</span>
     </span>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/[0.08] bg-surface/20 px-6 py-8 text-center">
+      <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+        Antrian kosong
+      </p>
+      <p className="text-[13px] text-muted-strong">
+        Tambahkan file di atas — konversi akan muncul di sini.
+      </p>
+    </div>
   );
 }

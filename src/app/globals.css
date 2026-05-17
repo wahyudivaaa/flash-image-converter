@@ -2,18 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Flash Image Converter — visual system
+  Direction: Tactile dark workshop (Option A)
+  Reasoning: A converter is a tool, not a campaign. Dev-tool DNA (Linear / Raycast /
+  Vercel) communicates speed, focus, and trust. Single accent (electric lime) reads
+  as "fast / current / fresh" without leaning on the SaaS-blue reflex.
+
+  Tokens use space-separated RGB so Tailwind alpha modifiers work
+  (e.g. bg-accent/20 → rgb(var(--accent) / 0.2)).
+*/
+
 :root {
   color-scheme: dark;
+
+  /* Warm-tinted neutrals — never pure black */
+  --base: 12 12 14;            /* page background */
+  --surface: 20 20 23;         /* card surface */
+  --surface-2: 28 28 32;       /* elevated surface */
+  --line: 255 255 255;         /* hairline base; used with /<alpha> */
+  --line-strong: 255 255 255;
+
+  --foreground: 244 244 245;
+  --muted: 161 161 170;        /* zinc-400 ish */
+  --muted-strong: 212 212 216; /* zinc-300 */
+
+  /* Single accent — electric lime. Energetic, distinctive, dev-tool. */
+  --accent: 196 240 66;        /* #c4f042 */
+  --accent-soft: 154 196 38;
+
+  /* Status — semantic only. Used sparingly. */
+  --success: 110 231 183;      /* emerald-300 */
+  --warning: 252 211 77;       /* amber-300 */
+  --danger: 251 113 133;       /* rose-400 */
 }
 
 html,
 body {
-  background: #0a0a0b;
-  color: #f4f4f5;
+  background: rgb(var(--base));
+  color: rgb(var(--foreground));
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Subtle grain on the hero — adds depth without noise */
+/* Subtle film grain on hero — adds depth, not noise */
 .grain::before {
   content: "";
   position: absolute;
@@ -21,10 +53,161 @@ body {
   pointer-events: none;
   background-image: radial-gradient(
     circle at 1px 1px,
-    rgba(255, 255, 255, 0.04) 1px,
+    rgba(255, 255, 255, 0.05) 1px,
     transparent 0
   );
   background-size: 4px 4px;
   mix-blend-mode: overlay;
-  opacity: 0.6;
+  opacity: 0.5;
+}
+
+/* Hairline grid backdrop — workshop feel */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: -1px -1px;
+}
+
+/* Branded focus ring — used everywhere keyboard nav lands */
+:where(button, a, input, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Range slider — fully custom for both tracks */
+input[type="range"].range-accent {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: 100%;
+  height: 28px;
+  cursor: pointer;
+}
+input[type="range"].range-accent:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* WebKit track + filled portion via gradient (set inline via --fill) */
+input[type="range"].range-accent::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    rgb(var(--accent)) 0%,
+    rgb(var(--accent)) var(--fill, 0%),
+    rgb(255 255 255 / 0.08) var(--fill, 0%),
+    rgb(255 255 255 / 0.08) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+input[type="range"].range-accent::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 999px;
+  background: rgb(var(--foreground));
+  border: 0;
+  margin-top: -5px;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.5),
+    0 0 0 4px rgb(var(--accent) / 0),
+    0 2px 6px rgb(0 0 0 / 0.5);
+  transition: box-shadow 150ms ease-out, transform 150ms ease-out;
+}
+input[type="range"].range-accent:hover:not(:disabled)::-webkit-slider-thumb,
+input[type="range"].range-accent:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.5),
+    0 0 0 5px rgb(var(--accent) / 0.25),
+    0 2px 6px rgb(0 0 0 / 0.5);
+  transform: scale(1.05);
+}
+input[type="range"].range-accent:active:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(0.96);
+}
+
+/* Firefox */
+input[type="range"].range-accent::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.08);
+}
+input[type="range"].range-accent::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+}
+input[type="range"].range-accent::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 999px;
+  background: rgb(var(--foreground));
+  border: 0;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.5),
+    0 2px 6px rgb(0 0 0 / 0.5);
+  transition: transform 150ms ease-out;
+}
+
+/* Drag-active marching ants on drop zone */
+.drop-active {
+  background-image:
+    linear-gradient(90deg, rgb(var(--accent)) 50%, transparent 50%),
+    linear-gradient(90deg, rgb(var(--accent)) 50%, transparent 50%),
+    linear-gradient(0deg, rgb(var(--accent)) 50%, transparent 50%),
+    linear-gradient(0deg, rgb(var(--accent)) 50%, transparent 50%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: 16px 1.5px, 16px 1.5px, 1.5px 16px, 1.5px 16px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  animation: marching-ants 1.2s linear infinite;
+}
+
+/* Shimmer for in-progress jobs */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0) 0%,
+    rgb(var(--accent) / 0.18) 50%,
+    rgb(255 255 255 / 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Reduced motion — kill every decorative animation */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+  .drop-active {
+    animation: none;
+  }
+}
+
+/* Scrollbar — only visible on hover, brand-tinted */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.06);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.12);
+  background-clip: padding-box;
 }
