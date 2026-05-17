@@ -4,6 +4,14 @@
     "src/app/api/convert/route.ts": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "src/app/api/convert-dng/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/blob-upload/route.ts": {
+      "maxDuration": 30,
+      "memory": 512
     }
   }
 }

@@ -27,8 +27,10 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 | **TIFF** | ✅ | ✅ |
 | GIF | ✅ | ✅ |
 | SVG | ✅ (rasterized) | — |
+| **DNG** | ✅ (via Vercel Blob, max 60 MB) | — |
 
-> HEIC/HEIF, RAW kamera (CR2/NEF), PSD tidak didukung. sharp tidak menyertakan paten libheif.
+> HEIC/HEIF, RAW kamera selain DNG (CR2/NEF/ARW), PSD tidak didukung.
+> DNG diproses dengan **mode passthrough** — extract preview JPEG full-resolution yang sudah dirender ISP HP, lalu re-wrap ke format target. Pixel-perfect dengan apa yang ditampilkan kamera.
 
 ## Jalankan lokal
 
@@ -58,19 +60,39 @@ node scripts/test-convert.mjs 3739
 ```
 src/
   app/
-    api/convert/route.ts   # endpoint konversi (POST multipart)
+    api/
+      convert/route.ts        # endpoint konversi standar (POST multipart, ≤4.5 MB)
+      convert-dng/route.ts    # endpoint DNG (terima Blob URL, kirim hasil ke Blob)
+      blob-upload/route.ts    # issue token upload langsung ke Vercel Blob
     layout.tsx
     page.tsx
     globals.css
   components/
-    Converter.tsx          # UI utama (client component)
+    Converter.tsx             # UI utama (client component)
   lib/
-    formats.ts             # definisi format & batas
+    formats.ts                # definisi format & batas
+    dng-extract.ts            # parser DNG: ekstrak preview JPEG embedded
 public/
   favicon.svg
-vercel.json                # config function (memory, duration)
-next.config.mjs            # serverExternalPackages: ["sharp"]
+scripts/
+  test-convert.mjs            # E2E test API standar
+  test-dng-extract.mjs        # smoke test parser DNG
+  dng-to-tiff/                # script lokal Python (batch DNG)
+vercel.json                   # config function (memory, duration)
+next.config.mjs               # serverExternalPackages, outputFileTracingIncludes
 ```
+
+## Setup Vercel Blob (untuk DNG)
+
+DNG bisa berukuran 12-30 MB, di atas batas serverless 4.5 MB. Solusinya: client upload langsung ke Vercel Blob, lalu serverless cuma fetch URL-nya.
+
+1. Di Vercel dashboard project: **Storage** → **Create Database** → pilih **Blob**.
+2. Vercel otomatis menambahkan environment variable `BLOB_READ_WRITE_TOKEN` ke project.
+3. Redeploy project. Selesai.
+
+Tanpa langkah ini, file non-DNG tetap berfungsi (lewat `/api/convert`), tapi upload DNG akan error.
+
+Quota free tier (Hobby): 1 GB storage + 10 GB bandwidth per bulan.
 
 ## Ekspansi
 

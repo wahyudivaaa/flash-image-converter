@@ -2,10 +2,13 @@
 
 import {
   ACCEPT_INPUT,
+  MAX_BLOB_BYTES,
   MAX_BYTES,
   OUTPUT_FORMATS,
+  isDngFile,
   type OutputFormat,
 } from "@/lib/formats";
+import { upload } from "@vercel/blob/client";
 import {
   ArrowRight,
   Check,
@@ -49,8 +52,55 @@ function sourceLabel(name: string): string {
   if (ext === "jpg" || ext === "jpeg") return "JPEG";
   if (ext === "tif" || ext === "tiff") return "TIFF";
   if (ext === "svg") return "SVG";
+  if (ext === "dng") return "DNG";
   if (ext) return ext.toUpperCase();
   return "IMG";
+}
+
+async function runDngJob(
+  file: File,
+  format: OutputFormat,
+  quality: number,
+): Promise<{
+  outputUrl: string;
+  outputName: string;
+  outputSize: number;
+}> {
+  // 1. Upload DNG directly to Vercel Blob (bypasses 4.5 MB serverless cap)
+  const blob = await upload(file.name, file, {
+    access: "public",
+    handleUploadUrl: "/api/blob-upload",
+    contentType: file.type || "application/octet-stream",
+    clientPayload: JSON.stringify({ format }),
+  });
+
+  // 2. Ask server to extract preview + convert + upload result
+  const res = await fetch("/api/convert-dng", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      blobUrl: blob.url,
+      format,
+      quality,
+      originalName: file.name,
+    }),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const json = (await res.json()) as { error?: string };
+      if (json.error) msg = json.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const data = (await res.json()) as {
+    outputUrl: string;
+    outputName: string;
+    outputSize: number;
+  };
+  return data;
 }
 
 export default function Converter() {
@@ -97,23 +147,44 @@ export default function Converter() {
   const removeJob = (id: string) => {
     setJobs((prev) => {
       const job = prev.find((j) => j.id === id);
-      if (job?.outputUrl) URL.revokeObjectURL(job.outputUrl);
+      // Only revoke object URLs we created locally (blob:...). Vercel Blob URLs are remote (https://) and don't need revoking.
+      if (job?.outputUrl && job.outputUrl.startsWith("blob:")) URL.revokeObjectURL(job.outputUrl);
       return prev.filter((j) => j.id !== id);
     });
   };
 
   const clearAll = () => {
-    jobs.forEach((j) => j.outputUrl && URL.revokeObjectURL(j.outputUrl));
+    jobs.forEach((j) => {
+      if (j.outputUrl && j.outputUrl.startsWith("blob:")) URL.revokeObjectURL(j.outputUrl);
+    });
     setJobs([]);
   };
 
   const runJob = async (job: Job): Promise<Job> => {
-    if (job.file.size > MAX_BYTES) {
+    const isDng = isDngFile(job.file);
+    const sizeCap = isDng ? MAX_BLOB_BYTES : MAX_BYTES;
+    if (job.file.size > sizeCap) {
       return {
         ...job,
         status: "error",
-        error: `Melebihi batas ${(MAX_BYTES / 1024 / 1024).toFixed(1)} MB`,
+        error: `Melebihi batas ${(sizeCap / 1024 / 1024).toFixed(1)} MB`,
       };
+    }
+
+    if (isDng) {
+      try {
+        const result = await runDngJob(job.file, job.format, job.quality);
+        return {
+          ...job,
+          status: "done",
+          outputUrl: result.outputUrl,
+          outputName: result.outputName,
+          outputSize: result.outputSize,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "DNG conversion failed";
+        return { ...job, status: "error", error: msg };
+      }
     }
 
     const fd = new FormData();
@@ -388,14 +459,18 @@ export default function Converter() {
           </p>
 
           <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-muted">
-            <span>JPG · PNG · WebP · AVIF · TIFF · GIF · SVG</span>
+            <span>JPG · PNG · WebP · AVIF · TIFF · GIF · SVG · DNG</span>
             <span className="text-white/15">·</span>
             <span>
               max{" "}
               <span className="text-muted-strong">
                 {(MAX_BYTES / 1024 / 1024).toFixed(1)} MB
+              </span>
+              {" / "}
+              <span className="text-muted-strong">
+                {(MAX_BLOB_BYTES / 1024 / 1024).toFixed(0)} MB
               </span>{" "}
-              / file
+              untuk DNG
             </span>
           </div>
         </div>
