@@ -6,6 +6,22 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 - Drag & drop multi-file, kontrol kualitas, download per file atau semua
 - Tanpa upload ke pihak ketiga, tanpa watermark
 
+## Fitur
+
+| Fitur | Detail |
+|---|---|
+| **Multi-format** | JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG (input only) |
+| **DNG / RAW HP** | Galaxy S22+/S23/S24, Pixel 6+ (passthrough preview) |
+| **Resize & preset** | Custom W×H, atau preset Full HD / HD / IG Square / Twitter Card / dll. |
+| **Fit mode** | Inside (preserve aspek), Cover (crop), Contain (letterbox) |
+| **Rotate** | 0°/90°/180°/270° |
+| **Auto-rotate EXIF** | Honor tag Orientation supaya foto HP tidak miring |
+| **Strip metadata** | Hapus EXIF/GPS/IPTC untuk privasi (default ON) |
+| **Background fill** | Warna latar saat transparansi → JPEG, atau corner setelah rotate |
+| **Quality control** | Slider 1-100 untuk format lossy |
+| **Batch ZIP download** | Download semua hasil sekaligus sebagai ZIP |
+| **Per-file progress** | Antrian dengan status real-time, retry on failure |
+
 ## Stack
 
 | Bagian | Pilihan |

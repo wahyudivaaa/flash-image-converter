@@ -95,6 +95,61 @@ export function isDngFile(file: File): boolean {
   return false;
 }
 
+/**
+ * Resize options. When neither width nor height is provided we skip resizing.
+ * "fit" follows sharp's resize fit modes:
+ *  - inside  : preserve aspect, image fits within bounds (the safe default)
+ *  - cover   : crop to fill bounds exactly
+ *  - contain : letterbox to fit bounds (requires bg)
+ */
+export type ResizeFit = "inside" | "cover" | "contain";
+
+export interface ResizeOptions {
+  width?: number;
+  height?: number;
+  fit: ResizeFit;
+}
+
+/**
+ * Per-job options applied during conversion. All optional with sensible defaults.
+ */
+export interface ConvertOptions {
+  quality: number;            // 1..100, used by lossy formats
+  resize?: ResizeOptions;     // omit = no resize
+  rotate?: number;            // 0 | 90 | 180 | 270; "auto" = handled by autoOrient
+  autoOrient: boolean;        // honor EXIF Orientation tag
+  stripMetadata: boolean;     // strip EXIF/IPTC/XMP from output
+  background: string;         // CSS color used when flattening transparency to opaque
+}
+
+export const DEFAULT_OPTIONS: ConvertOptions = {
+  quality: 85,
+  resize: undefined,
+  rotate: 0,
+  autoOrient: true,
+  stripMetadata: true,
+  background: "#ffffff",
+};
+
+/** Predefined size presets for the UI. */
+export const RESIZE_PRESETS: ReadonlyArray<{
+  id: string;
+  label: string;
+  width?: number;
+  height?: number;
+  fit: ResizeFit;
+}> = [
+  { id: "none", label: "Tanpa resize", fit: "inside" },
+  { id: "fit-1920", label: "Max 1920px (Full HD)", width: 1920, height: 1920, fit: "inside" },
+  { id: "fit-1280", label: "Max 1280px (HD)", width: 1280, height: 1280, fit: "inside" },
+  { id: "fit-800", label: "Max 800px (web)", width: 800, height: 800, fit: "inside" },
+  { id: "fit-512", label: "Max 512px (thumbnail)", width: 512, height: 512, fit: "inside" },
+  { id: "ig-square", label: "Instagram Square 1080×1080", width: 1080, height: 1080, fit: "cover" },
+  { id: "ig-portrait", label: "Instagram Portrait 1080×1350", width: 1080, height: 1350, fit: "cover" },
+  { id: "fb-cover", label: "Facebook Cover 820×312", width: 820, height: 312, fit: "cover" },
+  { id: "tw-card", label: "X / Twitter Card 1200×675", width: 1200, height: 675, fit: "cover" },
+] as const;
+
 export function formatById(id: string): FormatMeta | undefined {
   return OUTPUT_FORMATS.find((f) => f.id === id);
 }

@@ -2,19 +2,27 @@
 
 import {
   ACCEPT_INPUT,
+  DEFAULT_OPTIONS,
   MAX_BLOB_BYTES,
   MAX_BYTES,
   OUTPUT_FORMATS,
+  RESIZE_PRESETS,
   isDngFile,
+  type ConvertOptions,
   type OutputFormat,
+  type ResizeFit,
 } from "@/lib/formats";
 import { upload } from "@vercel/blob/client";
+import JSZip from "jszip";
 import {
+  Archive,
   ArrowRight,
   Check,
+  ChevronDown,
   Download,
   FileImage,
   Loader2,
+  Settings2,
   Trash2,
   TriangleAlert,
   UploadCloud,
@@ -61,6 +69,7 @@ async function runDngJob(
   file: File,
   format: OutputFormat,
   quality: number,
+  options: ConvertOptions,
 ): Promise<{
   outputUrl: string;
   outputName: string;
@@ -83,6 +92,13 @@ async function runDngJob(
       format,
       quality,
       originalName: file.name,
+      resizeWidth: options.resize?.width,
+      resizeHeight: options.resize?.height,
+      resizeFit: options.resize?.fit,
+      rotate: options.rotate,
+      autoOrient: options.autoOrient,
+      stripMetadata: options.stripMetadata,
+      background: options.background,
     }),
   });
   if (!res.ok) {
@@ -107,6 +123,9 @@ export default function Converter() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [format, setFormat] = useState<OutputFormat>("tiff");
   const [quality, setQuality] = useState<number>(85);
+  const [options, setOptions] = useState<ConvertOptions>(DEFAULT_OPTIONS);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [zipBusy, setZipBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +134,20 @@ export default function Converter() {
     () => OUTPUT_FORMATS.find((f) => f.id === format)!,
     [format],
   );
+
+  /** Match resize state to a preset id, "custom", or "none". */
+  const presetId = useMemo(() => {
+    const r = options.resize;
+    if (!r) return "none";
+    const match = RESIZE_PRESETS.find(
+      (p) => p.width === r.width && p.height === r.height && p.fit === r.fit,
+    );
+    return match?.id ?? "custom";
+  }, [options.resize]);
+
+  const setOpt = useCallback(<K extends keyof ConvertOptions>(key: K, value: ConvertOptions[K]) => {
+    setOptions((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const addFiles = useCallback(
     (incoming: FileList | File[]) => {
@@ -173,7 +206,7 @@ export default function Converter() {
 
     if (isDng) {
       try {
-        const result = await runDngJob(job.file, job.format, job.quality);
+        const result = await runDngJob(job.file, job.format, job.quality, options);
         return {
           ...job,
           status: "done",
@@ -191,6 +224,13 @@ export default function Converter() {
     fd.append("file", job.file);
     fd.append("format", job.format);
     fd.append("quality", String(job.quality));
+    if (options.resize?.width != null) fd.append("resizeWidth", String(options.resize.width));
+    if (options.resize?.height != null) fd.append("resizeHeight", String(options.resize.height));
+    if (options.resize?.fit) fd.append("resizeFit", options.resize.fit);
+    if (options.rotate != null) fd.append("rotate", String(options.rotate));
+    fd.append("autoOrient", options.autoOrient ? "true" : "false");
+    fd.append("stripMetadata", options.stripMetadata ? "true" : "false");
+    if (options.background) fd.append("background", options.background);
 
     let res: Response;
     try {
@@ -262,6 +302,43 @@ export default function Converter() {
         a.click();
         a.remove();
       });
+  };
+
+  const downloadZip = async () => {
+    if (zipBusy) return;
+    const done = jobs.filter((j) => j.status === "done" && j.outputUrl);
+    if (done.length === 0) return;
+
+    setZipBusy(true);
+    try {
+      const zip = new JSZip();
+      // Fetch each output (works for blob: and https://) and bundle in.
+      for (const j of done) {
+        try {
+          const res = await fetch(j.outputUrl!);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          // Disambiguate name collisions by suffixing with id slice.
+          const name = j.outputName ?? `${j.id}.bin`;
+          zip.file(name, blob);
+        } catch {
+          /* skip individual failures, keep going */
+        }
+      }
+      const archive = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(archive);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `flash-image-converter-${stamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Free memory after the click handler kicks off the download.
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      setZipBusy(false);
+    }
   };
 
   const doneCount = jobs.filter((j) => j.status === "done").length;
@@ -392,6 +469,277 @@ export default function Converter() {
               ? "Lebih rendah = ukuran lebih kecil."
               : `${currentMeta.label} lossless — slider tidak berlaku.`}
           </p>
+        </div>
+      </div>
+
+      {/* Advanced options */}
+      <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-surface/60 shadow-inset-hi">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+          aria-controls="advanced-panel"
+          className="group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-white/[0.02]"
+        >
+          <Settings2 size={14} strokeWidth={2} className="text-muted-strong" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+            Opsi Lanjutan
+          </span>
+          <span className="ml-2 hidden font-mono text-[11px] text-muted-strong sm:inline">
+            {presetId === "none" ? "tanpa resize" : presetId === "custom" ? "custom" : (RESIZE_PRESETS.find((p) => p.id === presetId)?.label ?? "")}
+            {options.rotate ? ` · ${options.rotate}°` : ""}
+            {options.stripMetadata ? " · strip" : ""}
+          </span>
+          <ChevronDown
+            size={14}
+            strokeWidth={2.2}
+            className={[
+              "ml-auto text-muted transition-transform duration-200 ease-out",
+              advancedOpen ? "rotate-180 text-foreground" : "",
+            ].join(" ")}
+          />
+        </button>
+
+        <div
+          id="advanced-panel"
+          className={[
+            "grid transition-[grid-template-rows] duration-300 ease-out",
+            advancedOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+          ].join(" ")}
+        >
+          <div className="overflow-hidden">
+            <div className="grid gap-5 border-t border-white/[0.05] px-5 py-5 sm:grid-cols-2">
+              {/* Resize preset + custom dimensions */}
+              <div className="sm:col-span-2">
+                <label
+                  htmlFor="resize-preset"
+                  className="mb-2 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted"
+                >
+                  Resize
+                </label>
+                <select
+                  id="resize-preset"
+                  value={presetId === "custom" ? "custom" : presetId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (id === "custom") {
+                      // Keep current dimensions or seed from a sensible default
+                      setOpt("resize", options.resize ?? { width: 1920, height: 1920, fit: "inside" });
+                      return;
+                    }
+                    const p = RESIZE_PRESETS.find((x) => x.id === id);
+                    if (!p || p.id === "none") {
+                      setOpt("resize", undefined);
+                      return;
+                    }
+                    setOpt("resize", { width: p.width, height: p.height, fit: p.fit });
+                  }}
+                  className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 text-[13px] text-foreground transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+                >
+                  {RESIZE_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                  {presetId === "custom" && <option value="custom">Custom</option>}
+                </select>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <label
+                      htmlFor="resize-width"
+                      className="mb-1 block font-mono text-[10.5px] uppercase tracking-wider text-muted"
+                    >
+                      Lebar (px)
+                    </label>
+                    <input
+                      id="resize-width"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="auto"
+                      value={options.resize?.width ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value === "" ? undefined : Math.max(0, Number(e.target.value));
+                        const cur = options.resize ?? { fit: "inside" as ResizeFit };
+                        if (v == null && cur.height == null) {
+                          setOpt("resize", undefined);
+                        } else {
+                          setOpt("resize", { ...cur, width: v });
+                        }
+                      }}
+                      className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 font-mono text-[13px] tabular-nums text-foreground transition-colors placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="resize-height"
+                      className="mb-1 block font-mono text-[10.5px] uppercase tracking-wider text-muted"
+                    >
+                      Tinggi (px)
+                    </label>
+                    <input
+                      id="resize-height"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="auto"
+                      value={options.resize?.height ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value === "" ? undefined : Math.max(0, Number(e.target.value));
+                        const cur = options.resize ?? { fit: "inside" as ResizeFit };
+                        if (v == null && cur.width == null) {
+                          setOpt("resize", undefined);
+                        } else {
+                          setOpt("resize", { ...cur, height: v });
+                        }
+                      }}
+                      className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 font-mono text-[13px] tabular-nums text-foreground transition-colors placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+                    />
+                  </div>
+                </div>
+
+                {/* Fit mode */}
+                <div className="mt-3">
+                  <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-wider text-muted">
+                    Mode
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-label="Mode resize"
+                    className="grid grid-cols-3 gap-1.5 rounded-md border border-white/[0.07] bg-base/40 p-1"
+                  >
+                    {([
+                      { id: "inside", label: "Fit dalam" },
+                      { id: "cover", label: "Crop" },
+                      { id: "contain", label: "Letterbox" },
+                    ] as const).map((m) => {
+                      const active = (options.resize?.fit ?? "inside") === m.id;
+                      const disabled = !options.resize;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          disabled={disabled}
+                          onClick={() => {
+                            if (!options.resize) return;
+                            setOpt("resize", { ...options.resize, fit: m.id });
+                          }}
+                          className={[
+                            "rounded-[5px] px-2 py-1.5 text-[12px] font-medium tracking-tight transition-all duration-150 ease-out",
+                            disabled
+                              ? "cursor-not-allowed text-muted/30"
+                              : active
+                                ? "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.4)]"
+                                : "text-muted-strong hover:bg-white/[0.04] hover:text-foreground",
+                          ].join(" ")}
+                        >
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Rotate */}
+              <div>
+                <span className="mb-2 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+                  Rotasi
+                </span>
+                <div
+                  role="radiogroup"
+                  aria-label="Rotasi gambar"
+                  className="grid grid-cols-4 gap-1.5 rounded-md border border-white/[0.07] bg-base/40 p-1"
+                >
+                  {([0, 90, 180, 270] as const).map((deg) => {
+                    const active = (options.rotate ?? 0) === deg;
+                    return (
+                      <button
+                        key={deg}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setOpt("rotate", deg)}
+                        className={[
+                          "rounded-[5px] px-2 py-1.5 font-mono text-[12px] tabular-nums tracking-tight transition-all duration-150 ease-out",
+                          active
+                            ? "bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.4)]"
+                            : "text-muted-strong hover:bg-white/[0.04] hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        {deg}°
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Background color */}
+              <div>
+                <label
+                  htmlFor="bg-hex"
+                  className="mb-2 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted"
+                >
+                  Warna latar
+                </label>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="bg-color"
+                    className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.02] transition-colors hover:border-white/20"
+                    style={{ background: options.background }}
+                    aria-label="Pilih warna latar"
+                  >
+                    <input
+                      id="bg-color"
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(options.background) ? options.background : "#ffffff"}
+                      onChange={(e) => setOpt("background", e.target.value)}
+                      className="h-12 w-12 cursor-pointer opacity-0"
+                      aria-label="Color picker warna latar"
+                    />
+                  </label>
+                  <input
+                    id="bg-hex"
+                    type="text"
+                    value={options.background}
+                    onChange={(e) => setOpt("background", e.target.value)}
+                    placeholder="#ffffff"
+                    spellCheck={false}
+                    className="w-full rounded-md border border-white/[0.07] bg-base/40 px-3 py-2 font-mono text-[13px] tracking-tight text-foreground transition-colors placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11.5px] text-muted">
+                  Untuk transparansi → JPEG atau letterbox.
+                </p>
+              </div>
+
+              {/* Toggles */}
+              <div className="sm:col-span-2">
+                <span className="mb-2 block font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+                  Metadata
+                </span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <CheckOption
+                    id="auto-orient"
+                    label="Auto-rotate (EXIF)"
+                    hint="Honor orientasi dari kamera/HP"
+                    checked={options.autoOrient}
+                    onChange={(v) => setOpt("autoOrient", v)}
+                  />
+                  <CheckOption
+                    id="strip-metadata"
+                    label="Hapus metadata"
+                    hint="EXIF, GPS, IPTC — privasi"
+                    checked={options.stripMetadata}
+                    onChange={(v) => setOpt("stripMetadata", v)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -534,6 +882,27 @@ export default function Converter() {
               <span className="font-mono text-[11.5px] text-muted">
                 ({doneCount})
               </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={downloadZip}
+            disabled={doneCount === 0 || zipBusy || busy}
+            className={[
+              "inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-[13px] font-medium transition-all duration-150 ease-out",
+              doneCount === 0 || zipBusy || busy
+                ? "cursor-not-allowed border-white/[0.05] bg-white/[0.01] text-muted/40"
+                : "border-white/10 bg-white/[0.03] text-muted-strong hover:border-white/20 hover:bg-white/[0.07] hover:text-foreground",
+            ].join(" ")}
+          >
+            {zipBusy ? (
+              <Loader2 size={13} strokeWidth={2.4} className="animate-spin" />
+            ) : (
+              <Archive size={13} strokeWidth={2.2} />
+            )}
+            <span>
+              {zipBusy ? "Mengemas…" : "Download semua sebagai ZIP"}
             </span>
           </button>
 
@@ -767,5 +1136,60 @@ function EmptyState() {
         Tambahkan file di atas — konversi akan muncul di sini.
       </p>
     </div>
+  );
+}
+
+function CheckOption({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={[
+        "group flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 transition-all duration-150 ease-out",
+        checked
+          ? "border-accent/40 bg-accent/[0.04]"
+          : "border-white/[0.07] bg-base/40 hover:border-white/15 hover:bg-white/[0.03]",
+      ].join(" ")}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="sr-only"
+      />
+      <span
+        aria-hidden
+        className={[
+          "mt-[1px] grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border transition-all duration-150",
+          checked
+            ? "border-accent bg-accent text-base shadow-[inset_0_1px_0_rgb(255_255_255_/_0.5)]"
+            : "border-white/15 bg-white/[0.02] text-transparent group-hover:border-white/30",
+        ].join(" ")}
+      >
+        <Check size={11} strokeWidth={3.2} />
+      </span>
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[12.5px] font-medium tracking-tight text-foreground">
+          {label}
+        </span>
+        {hint && (
+          <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted">
+            {hint}
+          </span>
+        )}
+      </span>
+    </label>
   );
 }
