@@ -42,6 +42,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             "application/octet-stream",
           ],
           maximumSizeInBytes: 60 * 1024 * 1024,
+          addRandomSuffix: true,
           tokenPayload: JSON.stringify({
             pathname,
             requestedFormat: payloadFormat,
