@@ -29,6 +29,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# dev server logs (created by smoke test scripts)
+dev.log
+dev.err.log
+.deploy-log.txt
+.dng-test/
+.dng-test-output.*
+
 # env files
 .env*.local
 .env
