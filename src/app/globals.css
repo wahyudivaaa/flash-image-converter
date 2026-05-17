@@ -20,21 +20,28 @@
   --base: 12 12 14;            /* page background */
   --surface: 20 20 23;         /* card surface */
   --surface-2: 28 28 32;       /* elevated surface */
-  --line: 255 255 255;         /* hairline base; used with /<alpha> */
+  --line: 255 255 255;
   --line-strong: 255 255 255;
 
   --foreground: 244 244 245;
-  --muted: 161 161 170;        /* zinc-400 ish */
-  --muted-strong: 212 212 216; /* zinc-300 */
+  --muted: 174 174 183;        /* lifted from 161/161/170 → passes 4.5:1 on var(--base) */
+  --muted-strong: 218 218 222;
 
   /* Single accent — electric lime. Energetic, distinctive, dev-tool. */
   --accent: 196 240 66;        /* #c4f042 */
   --accent-soft: 154 196 38;
 
   /* Status — semantic only. Used sparingly. */
-  --success: 110 231 183;      /* emerald-300 */
-  --warning: 252 211 77;       /* amber-300 */
-  --danger: 251 113 133;       /* rose-400 */
+  --success: 110 231 183;
+  --warning: 252 211 77;
+  --danger: 251 113 133;
+
+  /* Motion tokens — every transition speaks the same language */
+  --ease-out-quart: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
 }
 
 html,
@@ -70,11 +77,25 @@ body {
   background-position: -1px -1px;
 }
 
+/* Hero ambient mesh — warm + lime, never generic SaaS purple */
+.ambient-mesh {
+  background-image:
+    radial-gradient(ellipse 60% 55% at 18% 0%, rgb(196 240 66 / 0.10), transparent 60%),
+    radial-gradient(ellipse 45% 50% at 88% 12%, rgb(255 180 120 / 0.05), transparent 60%),
+    radial-gradient(ellipse 100% 70% at 50% 0%, rgb(196 240 66 / 0.04), transparent 70%);
+}
+
 /* Branded focus ring — used everywhere keyboard nav lands */
 :where(button, a, input, [role="button"], [tabindex]):focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
   border-radius: 4px;
+}
+/* Inputs already round — keep their radius on focus */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-radius: inherit;
 }
 
 /* Range slider — fully custom for both tracks */
@@ -117,7 +138,9 @@ input[type="range"].range-accent::-webkit-slider-thumb {
     0 0 0 1px rgb(0 0 0 / 0.5),
     0 0 0 4px rgb(var(--accent) / 0),
     0 2px 6px rgb(0 0 0 / 0.5);
-  transition: box-shadow 150ms ease-out, transform 150ms ease-out;
+  transition:
+    box-shadow var(--dur-base) var(--ease-out-quart),
+    transform var(--dur-base) var(--ease-out-quart);
 }
 input[type="range"].range-accent:hover:not(:disabled)::-webkit-slider-thumb,
 input[type="range"].range-accent:focus-visible::-webkit-slider-thumb {
@@ -151,20 +174,47 @@ input[type="range"].range-accent::-moz-range-thumb {
   box-shadow:
     0 0 0 1px rgb(0 0 0 / 0.5),
     0 2px 6px rgb(0 0 0 / 0.5);
-  transition: transform 150ms ease-out;
+  transition: transform var(--dur-base) var(--ease-out-quart);
 }
 
-/* Drag-active marching ants on drop zone */
+/* Drop-zone drag-active state — charged but composed
+   (replaces marching ants — those felt jittery; halo + dashed border + breathing icon read better) */
 .drop-active {
-  background-image:
-    linear-gradient(90deg, rgb(var(--accent)) 50%, transparent 50%),
-    linear-gradient(90deg, rgb(var(--accent)) 50%, transparent 50%),
-    linear-gradient(0deg, rgb(var(--accent)) 50%, transparent 50%),
-    linear-gradient(0deg, rgb(var(--accent)) 50%, transparent 50%);
-  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
-  background-size: 16px 1.5px, 16px 1.5px, 1.5px 16px, 1.5px 16px;
-  background-position: 0 0, 0 100%, 0 0, 100% 0;
-  animation: marching-ants 1.2s linear infinite;
+  border: 1.5px dashed rgb(var(--accent) / 0.5);
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 50%, rgb(var(--accent) / 0.08), transparent 70%);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--accent) / 0.18),
+    0 0 0 4px rgb(var(--accent) / 0.06),
+    0 12px 40px -12px rgb(var(--accent) / 0.18);
+}
+.drop-active::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 8px;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgb(var(--accent) / 0.10) 0%,
+    transparent 55%
+  );
+  pointer-events: none;
+  animation: drop-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes drop-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+
+/* Soft pulse for the lime status dot */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.55); }
+  70% { box-shadow: 0 0 0 6px rgb(var(--accent) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
+}
+.pulse-dot {
+  animation: pulse-ring 2.2s var(--ease-out-quart) infinite;
 }
 
 /* Shimmer for in-progress jobs */
@@ -179,6 +229,66 @@ input[type="range"].range-accent::-moz-range-thumb {
   animation: shimmer 1.6s linear infinite;
 }
 
+/* Job-row hover-lift — a single tactile cue that makes the list feel alive */
+.row-lift {
+  transition:
+    background-color var(--dur-base) var(--ease-out-quart),
+    box-shadow var(--dur-base) var(--ease-out-quart);
+}
+.row-lift:hover {
+  background-color: rgb(255 255 255 / 0.022);
+  box-shadow: inset 2px 0 0 0 rgb(var(--accent) / 0.45);
+}
+
+/* Card-style elevation for the action bar / panels when "primary" */
+.elev-1 {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+    0 1px 0 0 rgb(0 0 0 / 0.4),
+    0 8px 24px -16px rgb(0 0 0 / 0.6);
+}
+
+/* Primary CTA — confident, with internal highlight + shadowed lift */
+.cta-primary {
+  background: linear-gradient(
+    180deg,
+    rgb(var(--accent)) 0%,
+    rgb(var(--accent-soft)) 100%
+  );
+  color: rgb(var(--base));
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.55),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.18),
+    0 1px 0 0 rgb(0 0 0 / 0.4),
+    0 6px 18px -8px rgb(var(--accent) / 0.45);
+  transition:
+    transform var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-base) var(--ease-out-quart);
+}
+.cta-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.6),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.18),
+    0 2px 0 0 rgb(0 0 0 / 0.4),
+    0 12px 28px -10px rgb(var(--accent) / 0.55);
+}
+.cta-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.5),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.18),
+    0 0 0 0 rgb(0 0 0 / 0.4),
+    0 4px 12px -8px rgb(var(--accent) / 0.4);
+}
+
+/* Tabular numerics where we mean it */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss02" 1;
+  letter-spacing: -0.01em;
+}
+
 /* Reduced motion — kill every decorative animation */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -188,7 +298,11 @@ input[type="range"].range-accent::-moz-range-thumb {
     animation-iteration-count: 1 !important;
     transition-duration: 0ms !important;
   }
-  .drop-active {
+  .drop-active::before {
+    animation: none;
+    opacity: 0.7;
+  }
+  .pulse-dot {
     animation: none;
   }
 }
@@ -208,6 +322,6 @@ input[type="range"].range-accent::-moz-range-thumb {
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.14);
   background-clip: padding-box;
 }
