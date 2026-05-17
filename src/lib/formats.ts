@@ -10,7 +10,10 @@ export type OutputFormat =
   | "webp"
   | "avif"
   | "tiff"
-  | "gif";
+  | "gif"
+  | "bmp"
+  | "ico"
+  | "pdf";
 
 export type InputFormat = OutputFormat | "svg";
 
@@ -73,6 +76,30 @@ export const OUTPUT_FORMATS: readonly FormatMeta[] = [
     mime: "image/gif",
     lossy: false,
     hint: "Animasi sederhana, palet 256",
+  },
+  {
+    id: "bmp",
+    label: "BMP",
+    ext: "bmp",
+    mime: "image/bmp",
+    lossy: false,
+    hint: "Legacy Windows, lossless tanpa kompresi",
+  },
+  {
+    id: "ico",
+    label: "ICO",
+    ext: "ico",
+    mime: "image/x-icon",
+    lossy: false,
+    hint: "Favicon (multi-size 16/32/48/64/128/256)",
+  },
+  {
+    id: "pdf",
+    label: "PDF",
+    ext: "pdf",
+    mime: "application/pdf",
+    lossy: true,
+    hint: "Dokumen / arsip / cetak",
   },
 ] as const;
 

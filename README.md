@@ -10,7 +10,7 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 
 | Fitur | Detail |
 |---|---|
-| **Multi-format** | JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG (input only) |
+| **Multi-format** | JPEG, PNG, WebP, AVIF, TIFF, GIF, BMP, ICO, PDF (output) — SVG, DNG (input only) |
 | **DNG / RAW HP** | Galaxy S22+/S23/S24, Pixel 6+ (passthrough preview) |
 | **Resize & preset** | Custom W×H, atau preset Full HD / HD / IG Square / Twitter Card / dll. |
 | **Fit mode** | Inside (preserve aspek), Cover (crop), Contain (letterbox) |
@@ -34,18 +34,21 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 
 ## Format yang didukung
 
-| Format | Input | Output |
-|---|:-:|:-:|
-| JPEG | ✅ | ✅ |
-| PNG | ✅ | ✅ |
-| WebP | ✅ | ✅ |
-| AVIF | ✅ | ✅ |
-| **TIFF** | ✅ | ✅ |
-| GIF | ✅ | ✅ |
-| SVG | ✅ (rasterized) | — |
-| **DNG** | ✅ (via Vercel Blob, max 60 MB) | — |
+| Format | Input | Output | Catatan |
+|---|:-:|:-:|---|
+| JPEG | ✅ | ✅ | mozjpeg encoder |
+| PNG | ✅ | ✅ | palette mode di quality < 80 |
+| WebP | ✅ | ✅ | |
+| AVIF | ✅ | ✅ | |
+| **TIFF** | ✅ | ✅ | LZW compression |
+| GIF | ✅ | ✅ | |
+| SVG | ✅ (rasterized) | — | |
+| **DNG** | ✅ (via Vercel Blob, max 60 MB) | — | passthrough preview JPEG |
+| **BMP** | — | ✅ | 24-bit BGR, no compression |
+| **ICO** | — | ✅ | 6 sizes embedded (16/32/48/64/128/256) |
+| **PDF** | — | ✅ | single-page, fit-to-image |
 
-> HEIC/HEIF, RAW kamera selain DNG (CR2/NEF/ARW), PSD tidak didukung.
+> HEIC/HEIF, RAW kamera selain DNG (CR2/NEF/ARW), JPEG XL, PSD tidak didukung.
 > DNG diproses dengan **mode passthrough** — extract preview JPEG full-resolution yang sudah dirender ISP HP, lalu re-wrap ke format target. Pixel-perfect dengan apa yang ditampilkan kamera.
 
 ## Jalankan lokal
