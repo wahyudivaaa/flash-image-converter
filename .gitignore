@@ -36,6 +36,11 @@ dev.err.log
 .dng-test/
 .dng-test-output.*
 
+# python
+__pycache__/
+*.pyc
+*.pyo
+
 # env files
 .env*.local
 .env
