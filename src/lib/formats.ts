@@ -105,21 +105,39 @@ export const OUTPUT_FORMATS: readonly FormatMeta[] = [
 
 /** Accept attribute for <input type="file"> */
 export const ACCEPT_INPUT =
-  "image/jpeg,image/png,image/webp,image/avif,image/tiff,image/gif,image/svg+xml,image/x-adobe-dng,image/dng,.jpg,.jpeg,.png,.webp,.avif,.tif,.tiff,.gif,.svg,.dng";
+  "image/jpeg,image/png,image/webp,image/avif,image/tiff,image/gif,image/svg+xml," +
+  "image/x-adobe-dng,image/dng,image/x-canon-cr2,image/x-canon-cr3,image/x-nikon-nef," +
+  "image/x-sony-arw,image/x-panasonic-rw2,image/x-olympus-orf,image/x-fuji-raf," +
+  "image/x-pentax-pef," +
+  ".jpg,.jpeg,.png,.webp,.avif,.tif,.tiff,.gif,.svg," +
+  ".dng,.cr2,.cr3,.nef,.arw,.rw2,.orf,.raf,.pef";
 
 /** Vercel hard cap on request body */
 export const MAX_BYTES = 4.5 * 1024 * 1024;
 
-/** Max upload via Vercel Blob direct upload (DNG path). 60 MB covers phone DNGs. */
-export const MAX_BLOB_BYTES = 60 * 1024 * 1024;
+/** Max upload via Vercel Blob direct upload (RAW path). 80 MB covers full-frame RAWs. */
+export const MAX_BLOB_BYTES = 80 * 1024 * 1024;
 
-/** Detect whether a file should use the blob/DNG flow rather than the standard /api/convert. */
-export function isDngFile(file: File): boolean {
+/** All RAW camera extensions we know how to extract a preview from. */
+export const RAW_EXTENSIONS = [
+  "dng", "cr2", "cr3", "nef", "arw", "rw2", "orf", "raf", "pef",
+] as const;
+
+/** Detect whether a file should use the blob/RAW flow rather than the standard /api/convert. */
+export function isRawFile(file: File): boolean {
   const name = file.name.toLowerCase();
-  if (name.endsWith(".dng")) return true;
+  for (const ext of RAW_EXTENSIONS) {
+    if (name.endsWith(`.${ext}`)) return true;
+  }
   // Some uploaders set type to image/x-adobe-dng or image/dng; others leave it empty.
-  if (file.type === "image/x-adobe-dng" || file.type === "image/dng") return true;
+  if (file.type.startsWith("image/x-")) return true;
+  if (file.type === "image/dng") return true;
   return false;
+}
+
+/** @deprecated use isRawFile() */
+export function isDngFile(file: File): boolean {
+  return isRawFile(file);
 }
 
 /**

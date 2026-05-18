@@ -1,6 +1,6 @@
 "use client";
 
-import { OUTPUT_FORMATS } from "@/lib/formats";
+import { OUTPUT_FORMATS, isRawFile } from "@/lib/formats";
 import {
   ArrowRight,
   Check,
@@ -238,9 +238,10 @@ function StatusBadge({ status }: { status: JobStatus }) {
 }
 
 function JobThumbs({ job }: { job: Job }) {
-  const isDng = /\.dng$/i.test(job.file.name);
+  const isRaw = isRawFile(job.file);
   const ext = job.file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
-  const inputBadge = isDng ? "DNG" : ext.toUpperCase().slice(0, 4);
+  const rawBadge = isRaw ? (ext || "raw").toUpperCase() : null;
+  const inputBadge = rawBadge ?? ext.toUpperCase().slice(0, 4);
 
   const outputRenderable =
     job.status === "done" &&
@@ -269,12 +270,20 @@ function JobThumbs({ job }: { job: Job }) {
         />
       ) : (
         <span
-          aria-label="Pratinjau input"
-          className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-base/40 text-muted-strong sm:h-11 sm:w-11"
+          aria-label={
+            rawBadge ? `RAW ${rawBadge}, pratinjau menyusul` : "Pratinjau input"
+          }
+          title={rawBadge ? `RAW ${rawBadge} — pratinjau diekstrak server` : undefined}
+          className={[
+            "grid h-10 w-10 place-items-center rounded-md border bg-base/40 sm:h-11 sm:w-11",
+            rawBadge
+              ? "border-accent/25 bg-accent/[0.06] text-accent"
+              : "border-white/[0.08] text-muted-strong",
+          ].join(" ")}
         >
-          {isDng ? (
-            <span className="font-mono text-[9.5px] uppercase tracking-wider">
-              DNG
+          {rawBadge ? (
+            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider">
+              {rawBadge}
             </span>
           ) : job.thumbUrl === "" ? (
             <span className="font-mono text-[9.5px] uppercase tracking-wider">

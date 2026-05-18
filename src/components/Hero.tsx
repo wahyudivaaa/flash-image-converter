@@ -81,8 +81,8 @@ function FormatPill({ children }: { children: React.ReactNode }) {
 
 function StatsStrip() {
   const items = [
-    { k: "9", v: "format" },
-    { k: "DNG", v: "support" },
+    { k: "9", v: "format output" },
+    { k: "9", v: "raw kamera" },
     { k: "0", v: "watermark" },
     { k: "100%", v: "private" },
   ];
@@ -114,9 +114,13 @@ function StatsStrip() {
 function FormatRibbon() {
   const pairs: Array<[string, string]> = [
     ["JPEG", "WebP"],
+    ["CR3", "JPEG"],
     ["PNG", "AVIF"],
+    ["NEF", "PNG"],
     ["TIFF", "JPEG"],
+    ["ARW", "WebP"],
     ["DNG", "PNG"],
+    ["RAF", "TIFF"],
     ["WebP", "PNG"],
     ["GIF", "WebP"],
   ];

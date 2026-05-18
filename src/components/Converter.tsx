@@ -5,7 +5,7 @@ import {
   MAX_BLOB_BYTES,
   MAX_BYTES,
   OUTPUT_FORMATS,
-  isDngFile,
+  isRawFile,
   type ConvertOptions,
   type OutputFormat,
 } from "@/lib/formats";
@@ -34,7 +34,7 @@ async function runDngJob(
   outputName: string;
   outputSize: number;
 }> {
-  // 1. Upload DNG directly to Vercel Blob (bypasses 4.5 MB serverless cap)
+  // 1. Upload RAW directly to Vercel Blob (bypasses 4.5 MB serverless cap)
   const blob = await upload(file.name, file, {
     access: "public",
     handleUploadUrl: "/api/blob-upload",
@@ -153,7 +153,7 @@ export default function Converter() {
   };
 
   const runJob = async (job: Job): Promise<Job> => {
-    const isDng = isDngFile(job.file);
+    const isDng = isRawFile(job.file);
     const sizeCap = isDng ? MAX_BLOB_BYTES : MAX_BYTES;
     if (job.file.size > sizeCap) {
       return {
@@ -174,7 +174,7 @@ export default function Converter() {
           outputSize: result.outputSize,
         };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "DNG conversion failed";
+        const msg = err instanceof Error ? err.message : "RAW conversion failed";
         return { ...job, status: "error", error: msg };
       }
     }

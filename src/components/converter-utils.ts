@@ -1,4 +1,4 @@
-import type { OutputFormat } from "@/lib/formats";
+import { RAW_EXTENSIONS, type OutputFormat } from "@/lib/formats";
 
 export type JobStatus = "queued" | "running" | "done" | "error";
 
@@ -41,19 +41,22 @@ export function sourceLabel(name: string): string {
   if (ext === "jpg" || ext === "jpeg") return "JPEG";
   if (ext === "tif" || ext === "tiff") return "TIFF";
   if (ext === "svg") return "SVG";
-  if (ext === "dng") return "DNG";
+  if ((RAW_EXTENSIONS as readonly string[]).includes(ext)) {
+    return ext.toUpperCase();
+  }
   if (ext) return ext.toUpperCase();
   return "IMG";
 }
 
 /**
  * Generate a small (max ~96px) JPEG data URL preview for an image file.
- * Returns null when the browser can't decode it (e.g. DNG, oversized) so callers
+ * Returns null when the browser can't decode it (e.g. RAW formats, oversized) so callers
  * can fall back to a badge.
  */
 export async function generateThumb(file: File): Promise<string | null> {
   if (file.size > 25 * 1024 * 1024) return null;
-  if (/\.dng$/i.test(file.name)) return null;
+  const ext = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+  if ((RAW_EXTENSIONS as readonly string[]).includes(ext)) return null;
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);

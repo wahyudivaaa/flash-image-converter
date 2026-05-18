@@ -124,21 +124,33 @@ export function DropZone({ hasFiles, onFiles }: DropZoneProps) {
             : "Drag & drop, atau klik untuk pilih file"}
         </p>
 
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-muted">
-          <span>JPG · PNG · WebP · AVIF · TIFF · GIF · SVG · DNG</span>
-          <span aria-hidden className="text-white/15">
-            ·
+        <div className="mt-3 flex flex-col items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-muted">
+          <span>JPG · PNG · WebP · AVIF · TIFF · GIF · SVG</span>
+          <span className="flex flex-wrap items-center justify-center gap-x-1.5">
+            <span className="text-muted-strong">
+              DNG · CR2 · CR3 · NEF · ARW · RW2 · ORF · RAF · PEF
+            </span>
+            <span aria-hidden className="text-white/20">
+              —
+            </span>
+            <span className="normal-case tracking-normal">RAW kamera</span>
           </span>
-          <span>
-            max{" "}
+          <span className="mt-0.5 flex items-center gap-1.5">
+            <span aria-hidden className="text-white/15">
+              max
+            </span>
             <span className="text-muted-strong">
               {(MAX_BYTES / 1024 / 1024).toFixed(1)} MB
             </span>
-            {" / "}
+            <span aria-hidden className="text-white/20">
+              /
+            </span>
             <span className="text-muted-strong">
               {(MAX_BLOB_BYTES / 1024 / 1024).toFixed(0)} MB
             </span>{" "}
-            untuk DNG
+            <span className="normal-case tracking-normal text-muted">
+              untuk RAW
+            </span>
           </span>
         </div>
       </div>

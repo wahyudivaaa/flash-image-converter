@@ -1,6 +1,6 @@
 import { del, put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
-import { extractDngPreview } from "@/lib/dng-extract";
+import { extractRawPreview } from "@/lib/raw-extract";
 import { formatById, isOutputFormat } from "@/lib/formats";
 import { convertWithPipeline, parseOptions } from "@/lib/pipeline";
 
@@ -48,27 +48,27 @@ export async function POST(req: NextRequest) {
   const meta = formatById(body.format)!;
   const options = parseOptions(body as unknown as Record<string, unknown>);
 
-  // Fetch DNG bytes from the uploaded blob
-  let dngBytes: Uint8Array;
+  // Fetch RAW bytes from the uploaded blob
+  let rawBytes: Uint8Array;
   try {
     const res = await fetch(body.blobUrl);
     if (!res.ok) {
       return NextResponse.json({ error: `Gagal mengambil blob (${res.status}).` }, { status: 502 });
     }
-    dngBytes = new Uint8Array(await res.arrayBuffer());
+    rawBytes = new Uint8Array(await res.arrayBuffer());
   } catch (err) {
     const msg = err instanceof Error ? err.message : "fetch error";
     return NextResponse.json({ error: `Gagal fetch blob: ${msg}` }, { status: 502 });
   }
 
-  // Extract embedded preview JPEG (the rendered ISP output)
-  const preview = extractDngPreview(dngBytes);
+  // Extract embedded preview JPEG (works across DNG, CR2, CR3, NEF, ARW, RW2, ORF, RAF, PEF)
+  const preview = extractRawPreview(rawBytes, body.originalName);
   if (!preview) {
     return NextResponse.json(
       {
         error:
-          "DNG ini tidak menyimpan preview JPEG full-resolution. " +
-          "Pastikan file dari kamera modern (Galaxy S22+/S23/S24, Pixel 6+, dll.).",
+          "File RAW ini tidak menyimpan preview JPEG full-resolution yang bisa dibaca. " +
+          "Format yang didukung: DNG, CR2, CR3, NEF, ARW, RW2, ORF, RAF, PEF.",
       },
       { status: 422 },
     );
