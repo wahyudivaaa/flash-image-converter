@@ -20,7 +20,33 @@ import {
 import { encodeBmp } from "@/lib/encoders/bmp";
 import { encodeIco } from "@/lib/encoders/ico";
 import { encodePdf } from "@/lib/encoders/pdf";
+import { encodeDng } from "@/lib/encoders/dng";
+import { encodeSvg } from "@/lib/encoders/svg";
 import { applyWatermark } from "@/lib/encoders/watermark";
+import { decodeBmp } from "@/lib/decoders/bmp";
+import { decodeIco } from "@/lib/decoders/ico";
+// NOTE: PDF input via pdfjs-dist + node-canvas is unstable on Vercel's
+// serverless runtime. PDF stays output-only for now. Decoder file remains
+// in src/lib/decoders/pdf.ts as a starting point for a future revisit.
+
+/**
+ * Decode formats sharp can't natively read, returning a sharp-friendly buffer
+ * (PNG). Returns the original input unchanged if it's already sharp-native.
+ */
+async function decodeIfNeeded(input: Buffer | Uint8Array): Promise<Buffer | Uint8Array> {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  if (buf.length < 4) return input;
+
+  // BMP: 'BM'
+  if (buf[0] === 0x42 && buf[1] === 0x4d) {
+    return decodeBmp(buf);
+  }
+  // ICO: reserved=0, type=1
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) {
+    return decodeIco(buf);
+  }
+  return input;
+}
 
 interface BuildPipelineArgs {
   input: Buffer | Uint8Array;
@@ -79,11 +105,14 @@ export async function convertWithPipeline(args: BuildPipelineArgs): Promise<Buff
   const { input, format, options, animated } = args;
   const bg = safeBackground(options.background);
 
+  // Stage 0: pre-decode formats sharp can't read (BMP/ICO/PDF) into PNG
+  // so the rest of the pipeline can treat them like any other input.
+  let buf: Buffer | Uint8Array = await decodeIfNeeded(input);
+
   // Stage 1+2: auto-orient (if requested) and manual rotate need to be
   // separated because sharp.rotate() with and without args target the same
   // internal "rotation" state — the second call wins. So we materialize after
   // autoOrient when both are needed.
-  let buf: Buffer | Uint8Array = input as Buffer;
 
   if (options.autoOrient) {
     buf = await sharp(buf, { failOn: "none", animated: animated ?? format === "gif" })
@@ -141,6 +170,8 @@ export async function convertWithPipeline(args: BuildPipelineArgs): Promise<Buff
     if (format === "bmp") return encodeBmp(intermediate, bg);
     if (format === "ico") return encodeIco(intermediate);
     if (format === "pdf") return encodePdf(intermediate, q, bg);
+    if (format === "dng") return encodeDng(intermediate, bg);
+    if (format === "svg") return encodeSvg(intermediate);
   }
 
   switch (format) {

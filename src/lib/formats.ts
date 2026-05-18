@@ -13,9 +13,16 @@ export type OutputFormat =
   | "gif"
   | "bmp"
   | "ico"
-  | "pdf";
+  | "pdf"
+  | "dng"
+  | "svg";
 
-export type InputFormat = OutputFormat | "svg";
+/**
+ * InputFormat is currently the same set as OutputFormat — every output also
+ * works as input via sharp / our decoders. RAW formats (DNG/CR2/CR3/etc.) and
+ * SVG are special cases tracked separately via isRawFile() and the SVG decoder.
+ */
+export type InputFormat = OutputFormat;
 
 export interface FormatMeta {
   id: OutputFormat;
@@ -101,15 +108,33 @@ export const OUTPUT_FORMATS: readonly FormatMeta[] = [
     lossy: true,
     hint: "Dokumen / arsip / cetak",
   },
+  {
+    id: "dng",
+    label: "DNG",
+    ext: "dng",
+    mime: "image/x-adobe-dng",
+    lossy: false,
+    hint: "Linear DNG — kompatibel Lightroom / darktable",
+  },
+  {
+    id: "svg",
+    label: "SVG",
+    ext: "svg",
+    mime: "image/svg+xml",
+    lossy: false,
+    hint: "Vector tracing — terbaik untuk logo / ikon",
+  },
 ] as const;
 
 /** Accept attribute for <input type="file"> */
 export const ACCEPT_INPUT =
   "image/jpeg,image/png,image/webp,image/avif,image/tiff,image/gif,image/svg+xml," +
+  "image/bmp,image/x-icon,image/vnd.microsoft.icon,application/pdf," +
   "image/x-adobe-dng,image/dng,image/x-canon-cr2,image/x-canon-cr3,image/x-nikon-nef," +
   "image/x-sony-arw,image/x-panasonic-rw2,image/x-olympus-orf,image/x-fuji-raf," +
   "image/x-pentax-pef," +
   ".jpg,.jpeg,.png,.webp,.avif,.tif,.tiff,.gif,.svg," +
+  ".bmp,.ico,.pdf," +
   ".dng,.cr2,.cr3,.nef,.arw,.rw2,.orf,.raf,.pef";
 
 /** Vercel hard cap on request body */

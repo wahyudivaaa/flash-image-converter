@@ -42,8 +42,8 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 | AVIF | ✅ | ✅ | |
 | **TIFF** | ✅ | ✅ | LZW compression |
 | GIF | ✅ | ✅ | |
-| SVG | ✅ (rasterized) | — | |
-| **DNG** | ✅ (via Vercel Blob, max 80 MB) | — | passthrough preview JPEG |
+| **SVG** | ✅ (rasterized) | ✅ (vector tracing) | output cocok untuk logo/ikon, bukan foto |
+| **DNG** | ✅ (via Vercel Blob, max 80 MB) | ✅ (Linear DNG) | output: kompatibel Lightroom / darktable |
 | **CR2 / CR3** (Canon) | ✅ (via Vercel Blob, max 80 MB) | — | TIFF-based / ISO BMFF |
 | **NEF** (Nikon) | ✅ (via Vercel Blob, max 80 MB) | — | TIFF-based |
 | **ARW** (Sony) | ✅ (via Vercel Blob, max 80 MB) | — | TIFF-based |
@@ -51,8 +51,8 @@ Konversi cepat antar format gambar — JPEG, PNG, WebP, AVIF, **TIFF**, GIF — 
 | **ORF** (Olympus) | ✅ (via Vercel Blob, max 80 MB) | — | TIFF-shaped (magic 0x4F52) |
 | **RAF** (Fujifilm) | ✅ (via Vercel Blob, max 80 MB) | — | Custom container |
 | **PEF** (Pentax) | ✅ (via Vercel Blob, max 80 MB) | — | TIFF-based |
-| **BMP** | — | ✅ | 24-bit BGR, no compression |
-| **ICO** | — | ✅ | 6 sizes embedded (16/32/48/64/128/256) |
+| **BMP** | ✅ | ✅ | 24/32-bit BI_RGB |
+| **ICO** | ✅ | ✅ | input: pick largest sub-image / output: 6 sizes |
 | **PDF** | — | ✅ | single-page, fit-to-image |
 
 > RAW formats diproses dengan **mode passthrough** — extract preview JPEG full-resolution yang dirender ISP kamera, lalu re-wrap ke format target. Pixel-perfect dengan apa yang ditampilkan kamera.
